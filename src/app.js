@@ -27,7 +27,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: "https://crm-frontend-production-d78b.up.railway.app/", // 前端域名
+    origin: "https://crm-frontend-production-d78b.up.railway.app", // 前端域名
     methods: "GET,POST,PUT,DELETE,OPTIONS",
     allowedHeaders: "Content-Type,Authorization",
     credentials: true,

@@ -18,12 +18,24 @@ const fileUpload = require('express-fileupload');
 // create our Express app
 const app = express();
 
+// app.use(
+//   cors({
+//     origin: true,
+//     credentials: true,
+//   })
+// );
+
 app.use(
   cors({
-    origin: true,
+    origin: "https://crm-frontend-production-d78b.up.railway.app/", // 前端域名
+    methods: "GET,POST,PUT,DELETE,OPTIONS",
+    allowedHeaders: "Content-Type,Authorization",
     credentials: true,
   })
 );
+
+// 允许 OPTIONS 预检请求
+app.options("*", cors());
 
 app.use(cookieParser());
 app.use(express.json());

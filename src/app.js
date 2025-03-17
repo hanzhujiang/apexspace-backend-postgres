@@ -27,15 +27,18 @@ const app = express();
 
 app.use(
   cors({
-    origin: "https://crm-frontend-production-d78b.up.railway.app", // 前端域名
+    origin: function (origin, callback) {
+      callback(null, true); // 允许所有来源
+    },
     methods: "GET,POST,PUT,DELETE,OPTIONS",
     allowedHeaders: "Content-Type,Authorization",
-    credentials: true,
+    credentials: true, // 允许前端携带 cookies 或认证信息
   })
 );
 
-// 允许 OPTIONS 预检请求
+// 处理 OPTIONS 预检请求
 app.options("*", cors());
+
 
 app.use(cookieParser());
 app.use(express.json());

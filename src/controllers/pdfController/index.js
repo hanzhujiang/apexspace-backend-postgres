@@ -1,7 +1,7 @@
 const pug = require('pug');
 const fs = require('fs');
 const moment = require('moment');
-let pdf = require('html-pdf');
+const puppeteer = require('puppeteer'); // 使用 Puppeteer
 const { listAllSettings, loadSettings } = require('@/middlewares/settings');
 const { getData } = require('@/middlewares/serverData');
 const useLanguage = require('@/locale/useLanguage');
@@ -21,16 +21,13 @@ exports.generatePdf = async (
   try {
     const { targetLocation } = info;
 
-    // if PDF already exists, then delete it and create a new PDF
+    // 如果 PDF 已经存在，则删除旧的 PDF
     if (fs.existsSync(targetLocation)) {
       fs.unlinkSync(targetLocation);
     }
 
-    // render pdf html
-
     if (pugFiles.includes(modelName.toLowerCase())) {
-      // Compile Pug template
-
+      // 加载设置
       const settings = await loadSettings();
       const selectedLang = settings['idurar_app_language'];
       const translate = useLanguage({ selectedLang });
@@ -58,6 +55,7 @@ exports.generatePdf = async (
 
       settings.public_server_file = process.env.PUBLIC_SERVER_FILE;
 
+      // 渲染 Pug 模板
       const htmlContent = pug.renderFile('src/pdf/' + modelName + '.pug', {
         model: result,
         settings,
@@ -67,16 +65,24 @@ exports.generatePdf = async (
         moment: moment,
       });
 
-      pdf
-        .create(htmlContent, {
-          format: info.format,
-          orientation: 'portrait',
-          border: '10mm',
-        })
-        .toFile(targetLocation, function (error) {
-          if (error) throw new Error(error);
-          if (callback) callback();
-        });
+      // 使用 Puppeteer 生成 PDF
+      const browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox'], // Railway 需要这些参数
+      });
+
+      const page = await browser.newPage();
+      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+      await page.pdf({
+        path: targetLocation, // 输出 PDF 文件路径
+        format: info.format,  // 纸张大小
+        printBackground: true,
+        margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' },
+      });
+
+      await browser.close();
+
+      if (callback) callback();
     }
   } catch (error) {
     throw new Error(error);

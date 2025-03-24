@@ -16,14 +16,13 @@ module.exports = downloadPdf = async (req, res, { directory, id }) => {
       }
 
       // Continue process if result is returned
-      const phantomPath = require('phantomjs-prebuilt').path;
 
       const fileId = modelName.toLowerCase() + '-' + result._id + '.pdf';
       const folderPath = modelName.toLowerCase();
       const targetLocation = `src/public/download/${folderPath}/${fileId}`;
       await custom.generatePdf(
         modelName,
-        { filename: folderPath, format: 'A4', targetLocation,phantomPath },
+        { filename: folderPath, format: 'A4', targetLocation },
         result,
         async () => {
           return res.download(targetLocation, (error) => {

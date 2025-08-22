@@ -18,27 +18,20 @@ const fileUpload = require('express-fileupload');
 // create our Express app
 const app = express();
 
+
 // app.use(
 //   cors({
-//     origin: true,
-//     credentials: true,
+//     origin: function (origin, callback) {
+//       callback(null, true); // 允许所有来源
+//     },
+//     methods: "GET,POST,PUT,DELETE,OPTIONS,PATCH",
+//     allowedHeaders: "Content-Type,Authorization",
+//     credentials: true, // 允许前端携带 cookies 或认证信息
 //   })
 // );
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      callback(null, true); // 允许所有来源
-    },
-    methods: "OPTIONS",
-    // methods: "GET,POST,PUT,DELETE,OPTIONS,PATCH",
-    allowedHeaders: "Content-Type,Authorization",
-    credentials: true, // 允许前端携带 cookies 或认证信息
-  })
-);
-
 // 处理 OPTIONS 预检请求
-app.options("*", cors());
+// app.options("*", cors());
 
 
 app.use(cookieParser());

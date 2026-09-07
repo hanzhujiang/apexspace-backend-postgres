@@ -1,7 +1,7 @@
 const pug = require('pug');
 const fs = require('fs');
 const moment = require('moment');
-const puppeteer = require('puppeteer'); // 使用 Puppeteer
+const puppeteer = require('puppeteer');
 const { listAllSettings, loadSettings } = require('@/middlewares/settings');
 const { getData } = require('@/middlewares/serverData');
 const useLanguage = require('@/locale/useLanguage');
@@ -12,6 +12,30 @@ const pugFiles = ['invoice', 'offer', 'quote', 'payment'];
 require('dotenv').config({ path: '.env' });
 require('dotenv').config({ path: '.env.local' });
 
+const BROWSER_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage', // prevents crashes in containers with small /dev/shm
+  '--disable-gpu',
+  '--no-zygote', // reduces subprocess count on Linux
+];
+
+let browserInstance = null;
+
+async function getBrowser() {
+  if (browserInstance) {
+    try {
+      // verify the existing browser is still responsive
+      await browserInstance.version();
+      return browserInstance;
+    } catch {
+      browserInstance = null;
+    }
+  }
+  browserInstance = await puppeteer.launch({ args: BROWSER_ARGS });
+  return browserInstance;
+}
+
 exports.generatePdf = async (
   modelName,
   info = { filename: 'pdf_file', format: 'A5', targetLocation: '' },
@@ -21,13 +45,11 @@ exports.generatePdf = async (
   try {
     const { targetLocation } = info;
 
-    // 如果 PDF 已经存在，则删除旧的 PDF
     if (fs.existsSync(targetLocation)) {
       fs.unlinkSync(targetLocation);
     }
 
     if (pugFiles.includes(modelName.toLowerCase())) {
-      // 加载设置
       const settings = await loadSettings();
       const selectedLang = settings['idurar_app_language'];
       const translate = useLanguage({ selectedLang });
@@ -55,7 +77,6 @@ exports.generatePdf = async (
 
       settings.public_server_file = process.env.PUBLIC_SERVER_FILE;
 
-      // 渲染 Pug 模板
       const htmlContent = pug.renderFile('src/pdf/' + modelName + '.pug', {
         model: result,
         settings,
@@ -65,22 +86,20 @@ exports.generatePdf = async (
         moment: moment,
       });
 
-      // 使用 Puppeteer 生成 PDF
-      const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'], // Railway 需要这些参数
-      });
-
+      const browser = await getBrowser();
       const page = await browser.newPage();
-      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
-      await page.pdf({
-        path: targetLocation, // 输出 PDF 文件路径
-        format: info.format,  // 纸张大小
-        printBackground: true,
-        margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' },
-      });
-
-      await browser.close();
+      try {
+        await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+        await page.pdf({
+          path: targetLocation,
+          format: info.format,
+          printBackground: true,
+          margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' },
+        });
+      } finally {
+        await page.close();
+      }
 
       if (callback) callback();
     }

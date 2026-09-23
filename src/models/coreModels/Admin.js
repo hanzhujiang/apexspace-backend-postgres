@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
+const { ALL_ROLES } = require('@/constants/roles');
 
 const adminSchema = new Schema({
   removed: {
@@ -30,7 +31,7 @@ const adminSchema = new Schema({
   role: {
     type: String,
     default: 'owner',
-    enum: ['owner'],
+    enum: ALL_ROLES,
   },
 });
 

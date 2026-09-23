@@ -11,10 +11,15 @@
     "production": "NODE_ENV=production",
     "setup": "node src/setup/setup.js",
     "upgrade": "node src/setup/upgrade.js",
-    "reset": "node src/setup/reset.js"
+    "reset": "node src/setup/reset.js",
+    "create-admin": "node src/setup/createAdmin.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@aws-sdk/client-s3": "^3.509.0",
+    "@langchain/anthropic": "^1.5.4",
+    "@langchain/core": "^1.2.5",
+    "@langchain/langgraph": "^1.4.9",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",

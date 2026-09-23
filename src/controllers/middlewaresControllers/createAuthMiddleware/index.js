@@ -3,6 +3,8 @@ const login = require('./login');
 const logout = require('./logout');
 const forgetPassword = require('./forgetPassword');
 const resetPassword = require('./resetPassword');
+const requireOwner = require('./requireOwner');
+const checkPermission = require('./checkPermission');
 
 const createAuthMiddleware = (userModel) => {
   let authMethods = {};
@@ -31,6 +33,10 @@ const createAuthMiddleware = (userModel) => {
     logout(req, res, {
       userModel,
     });
+
+  authMethods.requireOwner = requireOwner;
+  authMethods.checkPermission = checkPermission;
+
   return authMethods;
 };
 

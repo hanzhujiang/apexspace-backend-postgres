@@ -6,6 +6,8 @@ const router = express.Router();
 
 const adminController = require('@/controllers/coreControllers/adminController');
 const settingController = require('@/controllers/coreControllers/settingController');
+const permissionController = require('@/controllers/coreControllers/permissionController');
+const adminAuth = require('@/controllers/coreControllers/adminAuth');
 
 const { singleStorageUpload } = require('@/middlewares/uploadMiddleware');
 
@@ -18,6 +20,9 @@ router.route('/admin/password-update/:id').patch(catchErrors(adminController.upd
 //_______________________________ Admin Profile _______________________________
 
 router.route('/admin/profile/password').patch(catchErrors(adminController.updateProfilePassword));
+router.route('/admin/create').post(catchErrors(adminController.createAdmin));
+router.route('/admin/list').get(adminAuth.requireOwner, catchErrors(adminController.listAdmins));
+router.route('/admin/update/:id').patch(adminAuth.requireOwner, catchErrors(adminController.updateAdmin));
 router
   .route('/admin/profile/update')
   .patch(
@@ -51,4 +56,12 @@ router
     catchErrors(settingController.updateBySettingKey)
   );
 router.route('/setting/updateManySetting').patch(catchErrors(settingController.updateManySetting));
+
+// _______________________________ Permission Management (owner only) _______________________________
+router.route('/permission/list').get(adminAuth.requireOwner, catchErrors(permissionController.list));
+router.route('/permission/update').patch(adminAuth.requireOwner, catchErrors(permissionController.update));
+
+// Public permission list for non-owner users to load their own role's permissions
+router.route('/permission/my').get(catchErrors(permissionController.listMy));
+
 module.exports = router;

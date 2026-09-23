@@ -47,7 +47,7 @@ app.use(compression());
 
 app.use('/api', coreAuthRouter);
 app.use('/api', adminAuth.isValidAuthToken, coreApiRouter);
-app.use('/api', adminAuth.isValidAuthToken, erpApiRouter);
+app.use('/api', adminAuth.isValidAuthToken, adminAuth.checkPermission, erpApiRouter);
 app.use('/download', coreDownloadRouter);
 app.use('/public', corePublicRouter);
 

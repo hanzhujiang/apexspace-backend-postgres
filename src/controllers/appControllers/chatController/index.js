@@ -11,6 +11,7 @@ function friendlyMessage(err) {
   for (const [key, msg] of Object.entries(FRIENDLY_ERRORS)) {
     if (text.includes(key)) return msg;
   }
+
   return 'Sorry, I encountered an error processing your request. Please try again.';
 }
 

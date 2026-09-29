@@ -31,6 +31,11 @@ routesList.forEach(({ entity, controllerName }) => {
   routerApp(entity, controller);
 });
 
+// Custom inventory routes
+const inventoryCtrl = appControllers['inventoryController'];
+router.route('/inventory/arrived/:id').patch(catchErrors(inventoryCtrl['arrived']));
+router.route('/inventory/update-ontheway/:id').patch(catchErrors(inventoryCtrl['updateOnTheWay']));
+
 router.post('/chat', catchErrors(chatController.chat));
 
 module.exports = router;

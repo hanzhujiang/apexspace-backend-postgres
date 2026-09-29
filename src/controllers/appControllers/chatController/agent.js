@@ -4,7 +4,7 @@ const { HumanMessage, AIMessage, SystemMessage } = require('@langchain/core/mess
 const { getSalesSummary, getTopSKUs } = require('./tools');
 
 const llm = new ChatAnthropic({
-  model: 'claude-sonnet-4-6',
+  model: 'claude-opus-4-7',
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
@@ -16,7 +16,7 @@ const SYSTEM_PROMPT = `You are a helpful CRM sales assistant with access to live
 
 Tools available:
 - getSalesSummary: aggregated totals grouped by status (new, pending, won, lost, cancelled). Returns order count, quantity, revenue, and cost. Use for pipeline overview or status breakdowns.
-- getTopSKUs: ranks SKUs by revenue, quantity, or order count. Returns SKU code, product name, quantity, revenue, and cost. Use for any question about best-selling products, top SKUs, or product performance. Optional filters: date range, platform, warehouse.
+- getTopSKUs: ranks SKUs by revenue, quantity, or order count. Returns SKU code, product name, quantity, revenue, and cost. Use for any question about best-selling products, top SKUs, or product performance. Optional filters: date range, platform, warehouse_location.
 
 Always call the appropriate tool before answering — never guess at numbers.
 For date ranges, convert relative terms (e.g. "last month", "June", "Q1 2025") to ISO 8601 dates before calling tools.

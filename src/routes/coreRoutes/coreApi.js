@@ -20,7 +20,7 @@ router.route('/admin/password-update/:id').patch(catchErrors(adminController.upd
 //_______________________________ Admin Profile _______________________________
 
 router.route('/admin/profile/password').patch(catchErrors(adminController.updateProfilePassword));
-router.route('/admin/create').post(catchErrors(adminController.createAdmin));
+router.route('/admin/create').post(adminAuth.requireOwner, catchErrors(adminController.createAdmin));
 router.route('/admin/list').get(adminAuth.requireOwner, catchErrors(adminController.listAdmins));
 router.route('/admin/update/:id').patch(adminAuth.requireOwner, catchErrors(adminController.updateAdmin));
 router

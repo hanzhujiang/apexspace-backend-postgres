@@ -9,7 +9,10 @@ const ENTITY_TO_PERMISSION = {
   paymentmode: 'paymentMode',
   taxes:       'taxes',
   sales:       'sales',
-  setting:     'settings',
+  inventory:     'inventory',
+  warehouse:     'warehouse',
+  productcosts:  'productCosts',
+  setting:       'settings',
   chat:        'salesAssistant',
 };
 

@@ -1,11 +1,12 @@
 const mongoose = require('mongoose');
 const { generate: uniqueId } = require('shortid');
+const { ALL_ROLES } = require('@/constants/roles');
 
 const createAdmin = async (userModel, req, res) => {
   const User = mongoose.model(userModel);
   const UserPassword = mongoose.model(userModel + 'Password');
 
-  const { email, name, surname, password } = req.body;
+  const { email, name, surname, password, role } = req.body;
 
   if (!email || !name || !password) {
     return res.status(400).json({
@@ -23,6 +24,15 @@ const createAdmin = async (userModel, req, res) => {
     });
   }
 
+  const assignedRole = role || 'admin';
+  if (!ALL_ROLES.includes(assignedRole)) {
+    return res.status(400).json({
+      success: false,
+      result: null,
+      message: 'Invalid role.',
+    });
+  }
+
   const existing = await User.findOne({ email: email.toLowerCase(), removed: false });
   if (existing) {
     return res.status(409).json({
@@ -37,7 +47,7 @@ const createAdmin = async (userModel, req, res) => {
     name,
     surname: surname || '',
     enabled: true,
-    role: 'owner',
+    role: assignedRole,
   }).save();
 
   const newUserPassword = new UserPassword();

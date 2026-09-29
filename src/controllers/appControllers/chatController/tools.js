@@ -20,11 +20,10 @@ const getSalesSummary = tool(
         $group: {
           _id: '$status',
           count: { $sum: 1 },
-          totalAmount: { $sum: '$amount' },
           totalRevenue: { $sum: '$sale_price_aud' },
           totalCost: { $sum: '$cost_aud' },
+          totalGrossProfit: { $sum: '$gross_profit' },
           totalQty: { $sum: '$quantity' },
-          currency: { $first: '$currency' },
         },
       },
       { $sort: { totalRevenue: -1 } },
@@ -35,7 +34,7 @@ const getSalesSummary = tool(
     return results
       .map(
         (r) =>
-          `Status: ${r._id || 'unknown'}, Orders: ${r.count}, Qty: ${r.totalQty}, Revenue: $${r.totalRevenue.toFixed(2)} AUD, Cost: $${r.totalCost.toFixed(2)} AUD`
+          `Status: ${r._id || 'unknown'}, Orders: ${r.count}, Qty: ${r.totalQty}, Revenue: $${r.totalRevenue.toFixed(2)} AUD, Cost: $${r.totalCost.toFixed(2)} AUD, Gross Profit: $${r.totalGrossProfit.toFixed(2)} AUD`
       )
       .join('\n');
   },
@@ -55,7 +54,7 @@ const getSalesSummary = tool(
 );
 
 const getTopSKUs = tool(
-  async ({ from, to, limit, sortBy, platform, warehouse }) => {
+  async ({ from, to, limit, sortBy, platform, warehouse_location }) => {
     const Sales = mongoose.model('Sales');
 
     const match = { removed: { $ne: true }, sku: { $exists: true, $ne: '' } };
@@ -65,7 +64,7 @@ const getTopSKUs = tool(
       if (to) match.date.$lte = new Date(to);
     }
     if (platform) match.platform = platform;
-    if (warehouse) match.warehouse = warehouse;
+    if (warehouse_location) match.warehouse_location = warehouse_location;
 
     const sortField = sortBy === 'quantity' ? 'totalQty' : sortBy === 'orders' ? 'orderCount' : 'totalRevenue';
 
@@ -104,7 +103,7 @@ const getTopSKUs = tool(
       limit: z.number().int().min(1).max(50).optional().describe('Number of SKUs to return (default 10)'),
       sortBy: z.enum(['revenue', 'quantity', 'orders']).optional().describe('Sort by revenue (default), quantity sold, or order count'),
       platform: z.string().optional().describe('Filter by sales platform (e.g. Amazon, Shopify)'),
-      warehouse: z.string().optional().describe('Filter by warehouse'),
+      warehouse_location: z.string().optional().describe('Filter by warehouse location'),
     }),
   }
 );

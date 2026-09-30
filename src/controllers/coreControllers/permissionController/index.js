@@ -1,16 +1,19 @@
 const mongoose = require('mongoose');
-const { NON_OWNER_ROLES } = require('@/constants/roles');
+const { NON_OWNER_ROLES } = require('../../../constants/roles');
 
 const DEFAULT_PERMISSIONS = {
-  dashboard:   true,
-  customer:    true,
-  invoice:     true,
-  quote:       true,
-  payment:     true,
-  paymentMode: true,
-  taxes:       true,
-  sales:       true,
+  dashboard:      true,
+  customer:       true,
+  invoice:        true,
+  quote:          true,
+  payment:        true,
+  paymentMode:    true,
+  taxes:          true,
+  sales:          true,
   toolings:       true,
+  inventory:      true,
+  warehouse:      true,
+  productCosts:   true,
   settings:       false,
   salesAssistant: true,
 };

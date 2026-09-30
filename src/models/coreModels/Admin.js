@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
-const { ALL_ROLES } = require('@/constants/roles');
+const { ALL_ROLES } = require('../../constants/roles');
 
 const adminSchema = new Schema({
   removed: {

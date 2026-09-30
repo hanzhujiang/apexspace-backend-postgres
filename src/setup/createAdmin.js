@@ -21,12 +21,31 @@ if (!email || !password) {
   process.exit(1);
 }
 
+const DEFAULT_PERMISSIONS = {
+  dashboard:      true,
+  customer:       true,
+  invoice:        true,
+  quote:          true,
+  payment:        true,
+  paymentMode:    true,
+  taxes:          true,
+  sales:          true,
+  toolings:       true,
+  inventory:      true,
+  warehouse:      true,
+  productCosts:   true,
+  settings:       false,
+  salesAssistant: true,
+};
+
 async function createAdmin() {
   await mongoose.connect(process.env.DATABASE);
 
   try {
     const Admin = require('../models/coreModels/Admin');
     const AdminPassword = require('../models/coreModels/AdminPassword');
+    const Permission = require('../models/coreModels/Permission');
+    const { NON_OWNER_ROLES } = require('../constants/roles');
 
     const existing = await Admin.findOne({ email, removed: false });
     if (existing) {
@@ -48,6 +67,19 @@ async function createAdmin() {
     }).save();
 
     console.log(`✅ Admin created: ${email}`);
+
+    // Seed permission documents for all non-owner roles (upsert — safe to run multiple times)
+    await Promise.all(
+      NON_OWNER_ROLES.map((role) =>
+        Permission.findOneAndUpdate(
+          { role },
+          { $setOnInsert: { permissions: DEFAULT_PERMISSIONS } },
+          { upsert: true, new: true }
+        )
+      )
+    );
+
+    console.log(`✅ Permissions seeded for roles: ${NON_OWNER_ROLES.join(', ')}`);
   } catch (e) {
     console.error('❌ Error creating admin:', e.message);
   } finally {

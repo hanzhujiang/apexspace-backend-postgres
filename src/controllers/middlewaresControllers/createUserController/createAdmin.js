@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const { generate: uniqueId } = require('shortid');
-const { ALL_ROLES } = require('@/constants/roles');
+const { ALL_ROLES } = require('../../../constants/roles');
 
 const createAdmin = async (userModel, req, res) => {
   const User = mongoose.model(userModel);

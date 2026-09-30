@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { ALL_ROLES } = require('@/constants/roles');
+const { ALL_ROLES } = require('../../../constants/roles');
 
 const ALLOWED_ROLES = ALL_ROLES;
 

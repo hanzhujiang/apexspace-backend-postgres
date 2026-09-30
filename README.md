@@ -57,13 +57,9 @@ npm run create-admin -- --email=you@example.com --password=YourPassword --name=F
 | `--name` | No | First name (defaults to `Admin`) |
 | `--surname` | No | Last name (defaults to empty) |
 
-The account is created with `role: owner` (full access). The script also upserts Permission documents for all non-owner roles, so sub-users created afterwards will have correct defaults.
+The account is created with `role: owner` and `enabled: true`. The script refuses to create a duplicate — it exits with an error if that email already exists. It also upserts Permission documents for all non-owner roles, so sub-users created afterwards will have correct defaults.
 
-**Example:**
-
-```bash
-npm run create-admin -- --email=info@techhubmall.com --password=TechHub2024! --name=TechHub --surname=Mall
-```
+You can also create admins without the CLI via **Settings → Administrators** in the web app.
 
 ## Development
 
@@ -82,3 +78,8 @@ npm run dev
 | `npm run create-admin` | Create an owner admin account |
 | `npm run setup` | Legacy: creates demo admin + seeds collections |
 | `npm run reset` | Delete all admin and settings data |
+
+## Production Server Deployment
+railway login
+railway link
+railway up

@@ -50,7 +50,7 @@ async function salesList(Model, req, res) {
   const baseQuery = { removed: { $ne: true }, ...searchFilter };
 
   const [rawResult, count] = await Promise.all([
-    Model.find(baseQuery).skip(skip).limit(limit).sort({ created: -1 }).exec(),
+    Model.find(baseQuery).skip(skip).limit(limit).sort({ shipping_no: 1, created: -1 }).exec(),
     Model.countDocuments(baseQuery),
   ]);
 
@@ -145,6 +145,87 @@ function modelController() {
   };
 
   methods.list = (req, res) => salesList(Model, req, res);
+
+  methods.recentChart = async (req, res) => {
+    const days = Math.min(parseInt(req.query.days) || 7, 90);
+    const now = new Date();
+    const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+    const PLATFORMS = ['MyDeal', 'Amazon', 'Kogan', 'Bunnings', 'Shopify'];
+
+    const raw = await Model.aggregate([
+      { $match: { removed: { $ne: true }, date: { $gte: from, $lte: now } } },
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+            platform: '$platform',
+          },
+          qty: { $sum: '$quantity' },
+        },
+      },
+      { $sort: { '_id.date': 1 } },
+    ]);
+
+    // Build date range (oldest → newest)
+    const dates = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      dates.push(d.toISOString().slice(0, 10));
+    }
+
+    // date → platform → qty
+    const dataMap = {};
+    for (const date of dates) {
+      dataMap[date] = {};
+      for (const p of PLATFORMS) dataMap[date][p] = 0;
+    }
+    for (const row of raw) {
+      const date = row._id.date;
+      if (!dataMap[date]) continue;
+      const key = PLATFORMS.find((p) => p.toLowerCase() === (row._id.platform || '').toLowerCase());
+      if (key) dataMap[date][key] += row.qty;
+    }
+
+    const chartData = dates.map((date) => {
+      const entry = { date: date.slice(5).replace('-', '/') }; // MM/DD
+      let total = 0;
+      for (const p of PLATFORMS) {
+        entry[p] = dataMap[date][p];
+        total += entry[p];
+      }
+      entry.total = total;
+      return entry;
+    });
+
+    return res.status(200).json({ success: true, result: { chartData, platforms: PLATFORMS } });
+  };
+
+  methods.topSkus = async (req, res) => {
+    const days = Math.min(parseInt(req.query.days) || 30, 365);
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const result = await Model.aggregate([
+      {
+        $match: {
+          removed: { $ne: true },
+          date: { $gte: from },
+          sku: { $exists: true, $ne: '' },
+        },
+      },
+      {
+        $group: {
+          _id: { sku: '$sku', product_name: '$product_name' },
+          totalQty: { $sum: '$quantity' },
+        },
+      },
+      { $sort: { totalQty: -1 } },
+      { $limit: 10 },
+      { $project: { _id: 0, sku: '$_id.sku', product_name: '$_id.product_name', totalQty: 1 } },
+    ]);
+
+    return res.status(200).json({ success: true, result });
+  };
 
   methods.read = async (req, res) => {
     const sale = await Model.findOne({ _id: req.params.id, removed: false }).exec();

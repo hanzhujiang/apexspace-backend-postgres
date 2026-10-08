@@ -31,6 +31,11 @@ routesList.forEach(({ entity, controllerName }) => {
   routerApp(entity, controller);
 });
 
+// Custom sales dashboard routes
+const salesCtrl = appControllers['salesController'];
+router.route('/sales/recent-chart').get(catchErrors(salesCtrl['recentChart']));
+router.route('/sales/top-skus').get(catchErrors(salesCtrl['topSkus']));
+
 // Custom inventory routes
 const inventoryCtrl = appControllers['inventoryController'];
 router.route('/inventory/arrived/:id').patch(catchErrors(inventoryCtrl['arrived']));

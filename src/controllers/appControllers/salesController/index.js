@@ -42,9 +42,22 @@ async function salesList(Model, req, res) {
   const fieldsArray = req.query.fields ? req.query.fields.split(',') : [];
   let searchFilter = {};
   if (fieldsArray.length > 0) {
-    searchFilter.$or = fieldsArray.map((field) => ({
-      [field]: { $regex: new RegExp(req.query.q || '', 'i') },
+    const q = req.query.q || '';
+    const directFields = fieldsArray.filter((f) => f !== 'client_name');
+    const orClauses = directFields.map((field) => ({
+      [field]: { $regex: new RegExp(q, 'i') },
     }));
+    if (fieldsArray.includes('client_name') && q) {
+      const Client = mongoose.model('Client');
+      const matchingClients = await Client.find(
+        { name: { $regex: new RegExp(q, 'i') }, removed: { $ne: true } },
+        '_id'
+      ).lean();
+      if (matchingClients.length > 0) {
+        orClauses.push({ client: { $in: matchingClients.map((c) => c._id) } });
+      }
+    }
+    if (orClauses.length > 0) searchFilter.$or = orClauses;
   }
 
   const baseQuery = { removed: { $ne: true }, ...searchFilter };

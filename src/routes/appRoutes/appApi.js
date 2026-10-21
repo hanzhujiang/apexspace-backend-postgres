@@ -43,4 +43,12 @@ router.route('/inventory/update-ontheway/:id').patch(catchErrors(inventoryCtrl['
 
 router.post('/chat', catchErrors(chatController.chat));
 
+// Toolings routes
+const multer = require('multer');
+const koganUpload = require('@/controllers/appControllers/toolingsController/koganUpload');
+const koganSeedWeights = require('@/controllers/appControllers/toolingsController/koganSeedWeights');
+const upload = multer({ storage: multer.memoryStorage() });
+router.post('/toolings/kogan-upload', upload.single('file'), catchErrors(koganUpload));
+router.post('/toolings/kogan-weights-seed', catchErrors(koganSeedWeights));
+
 module.exports = router;

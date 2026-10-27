@@ -161,6 +161,15 @@ function modelController() {
 
   methods.recentChart = async (req, res) => {
     const days = Math.min(parseInt(req.query.days) || 7, 90);
+    const tz = (() => {
+      try {
+        const t = req.query.timezone || 'UTC';
+        Intl.DateTimeFormat(undefined, { timeZone: t });
+        return t;
+      } catch {
+        return 'UTC';
+      }
+    })();
     const now = new Date();
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
@@ -171,7 +180,7 @@ function modelController() {
       {
         $group: {
           _id: {
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: tz } },
             platform: '$platform',
           },
           qty: { $sum: '$quantity' },
@@ -180,11 +189,12 @@ function modelController() {
       { $sort: { '_id.date': 1 } },
     ]);
 
-    // Build date range (oldest → newest)
+    // Build date range in user's local timezone (oldest → newest)
+    const toLocalDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
     const dates = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      dates.push(d.toISOString().slice(0, 10));
+      dates.push(toLocalDate(d));
     }
 
     // date → platform → qty

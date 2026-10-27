@@ -12,7 +12,8 @@ const ENTITY_TO_PERMISSION = {
   inventory:     'inventory',
   warehouse:     'warehouse',
   productcosts:  'productCosts',
-  setting:       'settings',
+  setting:         'settings',
+  koganskuweight:  'shopSettings',
   chat:        'salesAssistant',
 };
 

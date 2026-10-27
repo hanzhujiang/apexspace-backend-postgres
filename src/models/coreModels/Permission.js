@@ -24,6 +24,7 @@ const permissionSchema = new Schema({
     warehouse:      { type: Boolean, default: true },
     productCosts:   { type: Boolean, default: true },
     settings:       { type: Boolean, default: false },
+    shopSettings:   { type: Boolean, default: false },
     salesAssistant: { type: Boolean, default: true },
     // Dashboard card-level permissions
     dashboardSummaryInvoices:    { type: Boolean, default: true },
@@ -36,6 +37,8 @@ const permissionSchema = new Schema({
     dashboardRecentSales:        { type: Boolean, default: true },
     dashboardTopSkus:            { type: Boolean, default: true },
     dashboardEmployeePerformance:{ type: Boolean, default: true },
+    shopSettingsLoadDefaults:    { type: Boolean, default: false },
+    shopSettingsDelete:          { type: Boolean, default: false },
   },
 });
 

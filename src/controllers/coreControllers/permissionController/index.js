@@ -15,7 +15,22 @@ const DEFAULT_PERMISSIONS = {
   warehouse:      true,
   productCosts:   true,
   settings:       false,
+  shopSettings:   false,
   salesAssistant: true,
+  // Dashboard card-level
+  dashboardSummaryInvoices:     true,
+  dashboardSummaryQuote:        true,
+  dashboardSummaryPayment:      true,
+  dashboardSummaryUnpaid:       true,
+  dashboardChartInvoices:       true,
+  dashboardChartQuote:          true,
+  dashboardCustomers:           true,
+  dashboardRecentSales:         true,
+  dashboardTopSkus:             true,
+  dashboardEmployeePerformance: true,
+  // Shop Settings
+  shopSettingsLoadDefaults:     false,
+  shopSettingsDelete:           false,
 };
 
 const list = async (req, res) => {
@@ -32,7 +47,11 @@ const list = async (req, res) => {
     )
   );
 
-  const result = await Permission.find({ role: { $in: NON_OWNER_ROLES } }).sort({ role: 1 });
+  const docs = await Permission.find({ role: { $in: NON_OWNER_ROLES } }).sort({ role: 1 }).lean();
+  const result = docs.map((doc) => ({
+    ...doc,
+    permissions: { ...DEFAULT_PERMISSIONS, ...doc.permissions },
+  }));
 
   return res.status(200).json({
     success: true,
@@ -89,18 +108,23 @@ const listMy = async (req, res) => {
 
   const Permission = mongoose.model('Permission');
 
-  let rolePermission = await Permission.findOne({ role: user.role });
+  let rolePermission = await Permission.findOne({ role: user.role }).lean();
   if (!rolePermission) {
     rolePermission = await Permission.findOneAndUpdate(
       { role: user.role },
       { $setOnInsert: { permissions: DEFAULT_PERMISSIONS } },
-      { upsert: true, new: true }
+      { upsert: true, new: true, lean: true }
     );
   }
 
+  const merged = {
+    ...rolePermission,
+    permissions: { ...DEFAULT_PERMISSIONS, ...rolePermission.permissions },
+  };
+
   return res.status(200).json({
     success: true,
-    result: rolePermission,
+    result: merged,
     message: 'User permissions fetched successfully.',
   });
 };

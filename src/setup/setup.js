@@ -19,7 +19,7 @@ async function setupApp() {
 
     const demoAdmin = {
       email: 'admin@demo.com',
-      name: 'IDURAR',
+      name: 'toblo',
       surname: 'Admin',
       enabled: true,
       role: 'owner',

@@ -25,6 +25,17 @@ const permissionSchema = new Schema({
     productCosts:   { type: Boolean, default: true },
     settings:       { type: Boolean, default: false },
     salesAssistant: { type: Boolean, default: true },
+    // Dashboard card-level permissions
+    dashboardSummaryInvoices:    { type: Boolean, default: true },
+    dashboardSummaryQuote:       { type: Boolean, default: true },
+    dashboardSummaryPayment:     { type: Boolean, default: true },
+    dashboardSummaryUnpaid:      { type: Boolean, default: true },
+    dashboardChartInvoices:      { type: Boolean, default: true },
+    dashboardChartQuote:         { type: Boolean, default: true },
+    dashboardCustomers:          { type: Boolean, default: true },
+    dashboardRecentSales:        { type: Boolean, default: true },
+    dashboardTopSkus:            { type: Boolean, default: true },
+    dashboardEmployeePerformance:{ type: Boolean, default: true },
   },
 });
 

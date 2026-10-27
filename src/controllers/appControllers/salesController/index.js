@@ -63,7 +63,7 @@ async function salesList(Model, req, res) {
   const baseQuery = { removed: { $ne: true }, ...searchFilter };
 
   const [rawResult, count] = await Promise.all([
-    Model.find(baseQuery).skip(skip).limit(limit).sort({ shipping_no: 1, created: -1 }).exec(),
+    Model.find(baseQuery).skip(skip).limit(limit).sort({ shipping_no: 1, date: -1 }).exec(),
     Model.countDocuments(baseQuery),
   ]);
 
@@ -228,13 +228,14 @@ function modelController() {
       },
       {
         $group: {
-          _id: { sku: '$sku', product_name: '$product_name' },
+          _id: '$sku',
+          product_name: { $first: '$product_name' },
           totalQty: { $sum: '$quantity' },
         },
       },
       { $sort: { totalQty: -1 } },
       { $limit: 10 },
-      { $project: { _id: 0, sku: '$_id.sku', product_name: '$_id.product_name', totalQty: 1 } },
+      { $project: { _id: 0, sku: '$_id', product_name: 1, totalQty: 1 } },
     ]);
 
     return res.status(200).json({ success: true, result });
@@ -247,6 +248,45 @@ function modelController() {
     }
     const [enriched] = await enrichWithSkuCosts([sale]);
     return res.status(200).json({ success: true, result: enriched, message: 'we found this document' });
+  };
+
+  methods.employeePerformance = async (req, res) => {
+    const now = new Date();
+
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+
+    const weekStart = new Date(todayStart);
+    const dow = weekStart.getDay();
+    weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1)); // Monday
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const result = await Model.aggregate([
+      { $match: { removed: { $ne: true }, date: { $gte: monthStart } } },
+      {
+        $group: {
+          _id: '$createdBy',
+          today: { $sum: { $cond: [{ $gte: ['$date', todayStart] }, 1, 0] } },
+          week: { $sum: { $cond: [{ $gte: ['$date', weekStart] }, 1, 0] } },
+          month: { $sum: 1 },
+        },
+      },
+      { $lookup: { from: 'admins', localField: '_id', foreignField: '_id', as: 'admin' } },
+      { $unwind: '$admin' },
+      {
+        $project: {
+          _id: 0,
+          admin: { _id: 1, name: 1, role: 1, photo: 1 },
+          today: 1,
+          week: 1,
+          month: 1,
+        },
+      },
+      { $sort: { month: -1 } },
+    ]);
+
+    return res.status(200).json({ success: true, result });
   };
 
   return methods;

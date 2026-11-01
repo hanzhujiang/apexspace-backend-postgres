@@ -1,14 +1,14 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Payment');
-const Invoice = mongoose.model('Invoice');
-const custom = require('@/controllers/pdfController');
+const { models, sequelize } = require('@/db');
 
 const { calculate } = require('@/helpers');
+const { increaseBySettingKey } = require('@/middlewares/settings');
 
 const create = async (req, res) => {
-  // Creating a new document in the collection
-  if (req.body.amount === 0) {
+  const body = req.body || {};
+  const invoiceId = body.invoice_id || body.invoice;
+  const amount = Number(body.amount);
+
+  if (!amount || amount === 0) {
     return res.status(202).json({
       success: false,
       result: null,
@@ -16,69 +16,92 @@ const create = async (req, res) => {
     });
   }
 
-  const currentInvoice = await Invoice.findOne({
-    _id: req.body.invoice,
-    removed: false,
+  const result = await sequelize.transaction(async (t) => {
+    const currentInvoice = await models.Invoice.findOne({
+      where: { id: invoiceId, removed: false },
+      transaction: t,
+    });
+
+    if (!currentInvoice) {
+      const err = new Error('Invoice not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const previousTotal = Number(currentInvoice.total);
+    const previousDiscount = Number(currentInvoice.discount);
+    const previousCredit = Number(currentInvoice.credit);
+
+    const maxAmount = calculate.sub(
+      calculate.sub(previousTotal, previousDiscount),
+      previousCredit
+    );
+
+    if (amount > maxAmount) {
+      const err = new Error(`The Max Amount you can add is ${maxAmount}`);
+      err.status = 202;
+      throw err;
+    }
+
+    const payment = await models.Payment.create(
+      {
+        number: body.number,
+        date: body.date,
+        amount,
+        currency: body.currency,
+        ref: body.ref,
+        description: body.description,
+        invoice_id: invoiceId,
+        client_id: body.client_id || body.client,
+        paymentMode_id: body.paymentMode_id || body.paymentMode,
+        createdBy_id: req.admin.id,
+        removed: false,
+      },
+      { transaction: t }
+    );
+
+    const newCredit = calculate.add(previousCredit, amount);
+    let paymentStatus =
+      calculate.sub(previousTotal, previousDiscount) === newCredit
+        ? 'paid'
+        : newCredit > 0
+        ? 'partially'
+        : 'unpaid';
+
+    await currentInvoice.update(
+      { credit: newCredit, paymentStatus },
+      { transaction: t }
+    );
+
+    return payment;
+  }).catch((e) => {
+    if (e.status) return { __error: e };
+    throw e;
   });
 
-  const {
-    total: previousTotal,
-    discount: previousDiscount,
-    credit: previousCredit,
-  } = currentInvoice;
-
-  const maxAmount = calculate.sub(calculate.sub(previousTotal, previousDiscount), previousCredit);
-
-  if (req.body.amount > maxAmount) {
-    return res.status(202).json({
+  if (result && result.__error) {
+    return res.status(result.__error.status).json({
       success: false,
       result: null,
-      message: `The Max Amount you can add is ${maxAmount}`,
+      message: result.__error.message,
     });
   }
-  req.body['createdBy'] = req.admin._id;
 
-  const result = await Model.create(req.body);
+  increaseBySettingKey({ settingKey: 'last_payment_number' });
 
-  const fileId = 'payment-' + result._id + '.pdf';
-  const updatePath = await Model.findOneAndUpdate(
-    {
-      _id: result._id.toString(),
-      removed: false,
-    },
-    { pdf: fileId },
-    {
-      new: true,
-    }
-  ).exec();
-  // Returning successfull response
-
-  const { _id: paymentId, amount } = result;
-  const { id: invoiceId, total, discount, credit } = currentInvoice;
-
-  let paymentStatus =
-    calculate.sub(total, discount) === calculate.add(credit, amount)
-      ? 'paid'
-      : calculate.add(credit, amount) > 0
-      ? 'partially'
-      : 'unpaid';
-
-  const invoiceUpdate = await Invoice.findOneAndUpdate(
-    { _id: req.body.invoice },
-    {
-      $push: { payment: paymentId.toString() },
-      $inc: { credit: amount },
-      $set: { paymentStatus: paymentStatus },
-    },
-    {
-      new: true, // return the new result instead of the old one
-      runValidators: true,
-    }
-  ).exec();
+  const full = await models.Payment.findOne({
+    where: { id: result.id },
+    include: [
+      { model: models.Invoice, as: 'invoice' },
+      { model: models.Client, as: 'client' },
+      { model: models.Admin, as: 'createdBy', attributes: ['id', 'name'] },
+      { model: models.PaymentMode, as: 'paymentMode' },
+    ],
+  });
 
   return res.status(200).json({
     success: true,
-    result: updatePath,
+    result: full,
     message: 'Payment Invoice created successfully',
   });
 };

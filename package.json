@@ -1,5 +1,5 @@
 {
-  "name": "ah",
+  "name": "crm-backend-sql",
   "version": "4.1.0",
   "engines": {
     "npm": "10.2.4",
@@ -14,7 +14,9 @@
     "upgrade": "node src/setup/upgrade.js",
     "reset": "node src/setup/reset.js",
     "setup-db": "node src/setup/setupDb.js",
-    "create-admin": "node src/setup/createAdmin.js"
+    "create-admin": "node src/setup/createAdmin.js",
+    "db:sync": "node src/setup/syncDb.js",
+    "migrate:mongo-to-postgres": "node src/migration/mongoToPostgres.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -39,18 +41,20 @@
     "lodash": "^4.17.21",
     "module-alias": "^2.2.3",
     "moment": "^2.30.1",
-    "mongoose": "^8.1.1",
-    "mongoose-autopopulate": "^1.1.0",
     "multer": "^1.4.4",
     "node-cache": "^5.1.2",
     "openai": "^4.27.0",
+    "pg": "^8.12.0",
+    "pg-hstore": "^2.3.4",
     "pug": "^3.0.2",
     "puppeteer": "^24.4.0",
     "resend": "^2.0.0",
+    "sequelize": "^6.37.8",
     "shortid": "^2.2.16",
     "transliteration": "^2.3.5"
   },
   "devDependencies": {
+    "mongodb": "^7.8.0",
     "nodemon": "3.0.1"
   },
   "_moduleAliases": {

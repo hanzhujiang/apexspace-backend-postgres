@@ -1,12 +1,11 @@
-const mongoose = require('mongoose');
+const { models } = require('@/db');
+
 exports.getData = ({ model }) => {
-  const Model = mongoose.model(model);
-  const result = Model.find({ removed: false, enabled: true });
-  return result;
+  const Model = models[model];
+  return Model.findAll({ where: { removed: false, enabled: true } });
 };
 
 exports.getOne = ({ model, id }) => {
-  const Model = mongoose.model(model);
-  const result = Model.findOne({ _id: id, removed: false });
-  return result;
+  const Model = models[model];
+  return Model.findOne({ where: { id, removed: false } });
 };

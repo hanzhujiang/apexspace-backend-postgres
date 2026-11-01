@@ -6,4 +6,4 @@ notes.md
 .env
 .env.local
 
-*.pdf
+*.pdf.env

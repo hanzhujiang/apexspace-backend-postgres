@@ -1,6 +1,4 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Invoice');
+const { models, sequelize } = require('@/db');
 
 const custom = require('@/controllers/pdfController');
 
@@ -20,12 +18,19 @@ const update = async (req, res) => {
     });
   }
 
-  const previousInvoice = await Model.findOne({
-    _id: req.params.id,
-    removed: false,
+  const previousInvoice = await models.Invoice.findOne({
+    where: { id: req.params.id, removed: false },
   });
 
-  const { credit } = previousInvoice;
+  if (!previousInvoice) {
+    return res.status(404).json({
+      success: false,
+      result: null,
+      message: 'Invoice not found',
+    });
+  }
+
+  const credit = parseFloat(previousInvoice.credit) || 0;
 
   const { items = [], taxRate = 0, discount = 0 } = req.body;
 
@@ -53,23 +58,58 @@ const update = async (req, res) => {
   taxTotal = calculate.multiply(subTotal, taxRate / 100);
   total = calculate.add(subTotal, taxTotal);
 
-  body['subTotal'] = subTotal;
-  body['taxTotal'] = taxTotal;
-  body['total'] = total;
-  body['items'] = items;
-  body['pdf'] = 'invoice-' + req.params.id + '.pdf';
-  if (body.hasOwnProperty('currency')) {
-    delete body.currency;
-  }
-  // Find document by id and updates with the required fields
-
   let paymentStatus =
     calculate.sub(total, discount) === credit ? 'paid' : credit > 0 ? 'partially' : 'unpaid';
-  body['paymentStatus'] = paymentStatus;
 
-  const result = await Model.findOneAndUpdate({ _id: req.params.id, removed: false }, body, {
-    new: true, // return the new result instead of the old one
-  }).exec();
+  // Map Mongoose-style refs to Sequelize FK columns.
+  const clientId =
+    body.client && typeof body.client === 'object' ? body.client.id : body.client;
+
+  const updatePayload = {
+    ...body,
+    client_id: clientId,
+    subTotal,
+    taxTotal,
+    total,
+    paymentStatus,
+    pdf: 'invoice-' + req.params.id + '.pdf',
+  };
+  delete updatePayload.client;
+  delete updatePayload.createdBy;
+  delete updatePayload.items;
+  if (updatePayload.hasOwnProperty('currency')) {
+    delete updatePayload.currency;
+  }
+
+  const result = await sequelize.transaction(async (t) => {
+    await models.Invoice.update(updatePayload, {
+      where: { id: req.params.id, removed: false },
+      transaction: t,
+    });
+
+    // Replace invoice items wholesale (simpler than diffing).
+    await models.InvoiceItem.destroy({
+      where: { invoice_id: req.params.id },
+      transaction: t,
+    });
+    await models.InvoiceItem.bulkCreate(
+      items.map((item) => ({
+        itemName: item.itemName,
+        description: item.description,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.total,
+        invoice_id: req.params.id,
+      })),
+      { transaction: t }
+    );
+
+    return models.Invoice.findOne({
+      where: { id: req.params.id },
+      include: [{ model: models.InvoiceItem, as: 'items' }],
+      transaction: t,
+    });
+  });
 
   // Returning successfull response
 

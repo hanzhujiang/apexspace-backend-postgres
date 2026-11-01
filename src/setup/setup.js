@@ -1,77 +1,124 @@
 require('dotenv').config({ path: '.env' });
 require('dotenv').config({ path: '.env.local' });
+
+const bcrypt = require('bcryptjs');
 const { globSync } = require('glob');
 const fs = require('fs');
 const { generate: uniqueId } = require('shortid');
+const { models, sequelize } = require('../db');
+const { NON_OWNER_ROLES } = require('../constants/roles');
 
-const mongoose = require('mongoose');
-mongoose.connect(process.env.DATABASE);
+const DEFAULT_PERMISSIONS = {
+  dashboard:      true,
+  customer:       true,
+  invoice:        true,
+  quote:          true,
+  payment:        true,
+  paymentMode:    true,
+  taxes:          true,
+  sales:          true,
+  toolings:       true,
+  inventory:      true,
+  warehouse:      true,
+  productCosts:   true,
+  settings:       false,
+  salesAssistant: true,
+};
 
 async function setupApp() {
   try {
-    const Admin = require('../models/coreModels/Admin');
-    const AdminPassword = require('../models/coreModels/AdminPassword');
-    const newAdminPassword = new AdminPassword();
+    await sequelize.authenticate();
 
-    const salt = uniqueId();
+    // ── Demo admin ───────────────────────────────────────────────────────────
+    const demoEmail = 'admin@demo.com';
+    const demoPassword = 'admin123';
 
-    const passwordHash = newAdminPassword.generateHash(salt, 'admin123');
+    const existingAdmin = await models.Admin.findOne({ where: { email: demoEmail, removed: false } });
+    if (existingAdmin) {
+      console.log(`👍 Demo admin already exists (${demoEmail}), skipping admin creation.`);
+    } else {
+      const admin = await models.Admin.create({
+        email: demoEmail,
+        name: 'toblo',
+        surname: 'Admin',
+        enabled: true,
+        role: 'owner',
+      });
 
-    const demoAdmin = {
-      email: 'admin@demo.com',
-      name: 'toblo',
-      surname: 'Admin',
-      enabled: true,
-      role: 'owner',
-    };
-    const result = await new Admin(demoAdmin).save();
+      const salt = uniqueId();
+      const passwordHash = bcrypt.hashSync(salt + demoPassword, 10);
 
-    const AdminPasswordData = {
-      password: passwordHash,
-      emailVerified: true,
-      salt: salt,
-      user: result._id,
-    };
-    await new AdminPassword(AdminPasswordData).save();
+      await models.AdminPassword.create({
+        admin_id: admin.id,
+        password: passwordHash,
+        salt,
+        emailVerified: true,
+      });
 
-    console.log('👍 Admin created : Done!');
-
-    const Setting = require('../models/coreModels/Setting');
-
-    const settingFiles = [];
-
-    const settingsFiles = globSync('./src/setup/defaultSettings/**/*.json');
-
-    for (const filePath of settingsFiles) {
-      const file = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      settingFiles.push(...file);
+      console.log('👍 Admin created : Done!');
     }
 
-    await Setting.insertMany(settingFiles);
+    // ── Permissions ──────────────────────────────────────────────────────────
+    for (const role of NON_OWNER_ROLES) {
+      await models.Permission.findOrCreate({
+        where: { role },
+        defaults: { role, permissions: DEFAULT_PERMISSIONS },
+      });
+    }
+    console.log('👍 Permissions seeded : Done!');
 
+    // ── Settings ─────────────────────────────────────────────────────────────
+    const settingsFiles = globSync('./src/setup/defaultSettings/**/*.json');
+    const allSettings = [];
+    for (const filePath of settingsFiles) {
+      allSettings.push(...JSON.parse(fs.readFileSync(filePath, 'utf-8')));
+    }
+
+    for (const setting of allSettings) {
+      const isNumeric =
+        setting.valueType === 'Number' ||
+        setting.valueType === 'number' ||
+        typeof setting.settingValue === 'number';
+
+      const defaults = { ...setting };
+      if (isNumeric && typeof setting.settingValue === 'number') {
+        defaults.integerValue = setting.settingValue;
+      }
+
+      await models.Setting.findOrCreate({
+        where: {
+          settingCategory: setting.settingCategory,
+          settingKey: setting.settingKey,
+        },
+        defaults,
+      });
+    }
     console.log('👍 Settings created : Done!');
 
-    const PaymentMode = require('../models/appModels/PaymentMode');
-    const Taxes = require('../models/appModels/Taxes');
-
-    await Taxes.insertMany([{ taxName: 'Tax 0%', taxValue: '0', isDefault: true }]);
+    // ── Taxes ────────────────────────────────────────────────────────────────
+    await models.Taxes.findOrCreate({
+      where: { taxName: 'Tax 0%' },
+      defaults: { taxName: 'Tax 0%', taxValue: '0', isDefault: true },
+    });
     console.log('👍 Taxes created : Done!');
 
-    await PaymentMode.insertMany([
-      {
+    // ── Payment Modes ────────────────────────────────────────────────────────
+    await models.PaymentMode.findOrCreate({
+      where: { isDefault: true },
+      defaults: {
         name: 'Default Payment',
-        description: 'Default Payment Mode (Cash , Wire Transfert)',
+        description: 'Default Payment Mode (Cash, Wire Transfer)',
         isDefault: true,
       },
-    ]);
+    });
     console.log('👍 PaymentMode created : Done!');
 
     console.log('🥳 Setup completed :Success!');
-    process.exit();
+    process.exit(0);
   } catch (e) {
     console.log('\n🚫 Error! The Error info is below');
     console.log(e);
-    process.exit();
+    process.exit(1);
   }
 }
 

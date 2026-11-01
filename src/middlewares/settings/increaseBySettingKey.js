@@ -1,6 +1,4 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Setting');
+const { models } = require('@/db');
 
 const increaseBySettingKey = async ({ settingKey }) => {
   try {
@@ -8,24 +6,23 @@ const increaseBySettingKey = async ({ settingKey }) => {
       return null;
     }
 
-    const result = await Model.findOneAndUpdate(
-      { settingKey },
-      {
-        $inc: { settingValue: 1 },
-      },
-      {
-        new: true, // return the new result instead of the old one
-        runValidators: true,
-      }
-    ).exec();
+    const [affected] = await models.Setting.increment('integerValue', {
+      by: 1,
+      where: { settingKey },
+    });
 
-    // If no results found, return document not found
+    // Sequelize .increment() returns [affectedRows, affectedCount]; shape varies by dialect.
+    // Detect "no row matched" to preserve the Mongoose "null on miss" contract.
+    const affectedCount = Array.isArray(affected) ? affected.length : affected;
+    if (!affectedCount) {
+      return null;
+    }
+
+    const result = await models.Setting.findOne({ where: { settingKey } });
     if (!result) {
       return null;
-    } else {
-      // Return success resposne
-      return result;
     }
+    return result;
   } catch {
     return null;
   }

@@ -1,11 +1,11 @@
-const mongoose = require('mongoose');
+const { models, Op, sequelize } = require('@/db');
 const { koganShippingPriceCalculator } = require('./koganShippingPriceCalculator');
 const { KOGAN_SKU_WEIGHTS } = require('./koganConstants');
 
-const Sales = mongoose.model('Sales');
-const Client = mongoose.model('Client');
-const ProductCosts = mongoose.model('ProductCosts');
-const KoganSkuWeight = mongoose.model('KoganSkuWeight');
+const Sales = models.Sales;
+const Client = models.Client;
+const ProductCosts = models.ProductCosts;
+const KoganSkuWeight = models.KoganSkuWeight;
 
 // Parse YYYYMMDD from filenames like 20261021T064214_AUAXS_KOGAN_OrderManifest.csv,
 // then subtract 1 day (Kogan manifest date is dispatch date, orders placed the day before).
@@ -99,9 +99,11 @@ const koganUpload = async (req, res) => {
 
   // 1. Reject if any order_no already exists
   const csvOrderIds = [...new Set(rows.map((r) => r.OrderID).filter(Boolean))];
-  const existingSales = await Sales.find({ order_no: { $in: csvOrderIds }, removed: false })
-    .select('order_no')
-    .lean();
+  const existingSales = await Sales.findAll({
+    where: { order_no: { [Op.in]: csvOrderIds }, removed: false },
+    attributes: ['order_no'],
+    raw: true,
+  });
   if (existingSales.length > 0) {
     const duplicates = existingSales.map((s) => s.order_no);
     return res.status(400).json({
@@ -112,10 +114,14 @@ const koganUpload = async (req, res) => {
   }
 
   // 2. Load SKU weight map from DB; fall back to static constant if DB is empty
-  const weightDocs = await KoganSkuWeight.find({ removed: false }).select('sku weight').lean();
+  const weightDocs = await KoganSkuWeight.findAll({
+    where: { removed: false },
+    attributes: ['sku', 'weight'],
+    raw: true,
+  });
   const skuWeightMap =
     weightDocs.length > 0
-      ? Object.fromEntries(weightDocs.map((d) => [d.sku, d.weight]))
+      ? Object.fromEntries(weightDocs.map((d) => [d.sku, Number(d.weight)]))
       : KOGAN_SKU_WEIGHTS;
 
   // 3. Deduplicate client candidates within the CSV
@@ -139,27 +145,25 @@ const koganUpload = async (req, res) => {
   let clientsReused = 0;
 
   for (const [key, candidate] of clientCandidates) {
-    const existing = await Client.findOne({
-      name: candidate.name,
-      phone: candidate.phone,
-      address: candidate.address,
-      removed: false,
-    }).lean();
-    if (existing) {
-      clientIdMap.set(key, existing._id);
-      clientsReused++;
-    } else {
-      const newClient = await new Client({
+    const [client, created] = await Client.findOrCreate({
+      where: {
+        name: candidate.name,
+        phone: candidate.phone,
+        address: candidate.address,
+        removed: false,
+      },
+      defaults: {
         ...candidate,
         removed: false,
         enabled: true,
-        createdBy: req.admin._id,
+        createdBy_id: req.admin.id,
         created: now,
         updated: now,
-      }).save();
-      clientIdMap.set(key, newClient._id);
-      clientsCreated++;
-    }
+      },
+    });
+    clientIdMap.set(key, client.id);
+    if (created) clientsCreated++;
+    else clientsReused++;
   }
 
   // 5. Build sales docs
@@ -176,13 +180,15 @@ const koganUpload = async (req, res) => {
     }
 
     const costRecord = await ProductCosts.findOne({
-      sku,
-      removed: false,
-      date_from: { $lte: now },
-      $or: [{ date_to: null }, { date_to: { $gte: now } }],
-    })
-      .sort({ date_from: -1 })
-      .lean();
+      where: {
+        sku,
+        removed: false,
+        date_from: { [Op.lte]: now },
+        [Op.or]: [{ date_to: null }, { date_to: { [Op.gte]: now } }],
+      },
+      order: [['date_from', 'DESC']],
+      raw: true,
+    });
 
     const address = assembleAddress(row);
     const clientKey = `${row.DeliveryName}|${row.DeliveryPhone}|${address}`;
@@ -196,18 +202,18 @@ const koganUpload = async (req, res) => {
       sale_price_aud: parseFloat(row.ItemPrice) || 0,
       shipping_price_aud: shippingPrice,
       cost_aud: costRecord?.cost ?? 0,
-      client: clientIdMap.get(clientKey),
+      client_id: clientIdMap.get(clientKey),
       date: orderDate,
       status: 'new',
       removed: false,
-      createdBy: req.admin._id,
+      createdBy_id: req.admin.id,
       created: now,
       updated: now,
     });
   }
 
   // 6. Insert all sales
-  await Sales.insertMany(salesDocs);
+  await Sales.bulkCreate(salesDocs, { ignoreDuplicates: true });
 
   return res.status(200).json({
     success: true,

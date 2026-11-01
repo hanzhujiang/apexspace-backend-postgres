@@ -1,7 +1,6 @@
-const mongoose = require('mongoose');
+const { models, sequelize } = require('@/db');
 const moment = require('moment');
 
-const Model = mongoose.model('Payment');
 const { loadSettings } = require('@/middlewares/settings');
 
 const summary = async (req, res) => {
@@ -27,41 +26,23 @@ const summary = async (req, res) => {
   let startDate = currentDate.clone().startOf(defaultType);
   let endDate = currentDate.clone().endOf(defaultType);
 
-  // get total amount of invoices
-  const result = await Model.aggregate([
-    {
-      $match: {
-        removed: false,
+  const row = await models.Payment.findOne({
+    where: { removed: false },
+    attributes: [
+      [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+      [sequelize.fn('SUM', sequelize.col('amount')), 'total'],
+    ],
+    raw: true,
+  });
 
-        // date: {
-        //   $gte: startDate.toDate(),
-        //   $lte: endDate.toDate(),
-        // },
-      },
-    },
-    {
-      $group: {
-        _id: null, // Group all documents into a single group
-        count: {
-          $sum: 1,
-        },
-        total: {
-          $sum: '$amount',
-        },
-      },
-    },
-    {
-      $project: {
-        _id: 0, // Exclude _id from the result
-        count: 1,
-        total: 1,
-      },
-    },
-  ]);
+  const result = {
+    count: parseInt(row?.count) || 0,
+    total: parseFloat(row?.total) || 0,
+  };
 
   return res.status(200).json({
     success: true,
-    result: result.length > 0 ? result[0] : { count: 0, total: 0 },
+    result,
     message: `Successfully fetched the summary of payment invoices for the last ${defaultType}`,
   });
 };

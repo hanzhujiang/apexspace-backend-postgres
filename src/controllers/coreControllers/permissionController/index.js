@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const { models, Op } = require('@/db');
 const { NON_OWNER_ROLES } = require('../../../constants/roles');
 
 const DEFAULT_PERMISSIONS = {
@@ -16,6 +16,7 @@ const DEFAULT_PERMISSIONS = {
   productCosts:   true,
   settings:       false,
   shopSettings:   false,
+  userSessions:   false,
   salesAssistant: true,
   // Dashboard card-level
   dashboardSummaryInvoices:     true,
@@ -34,22 +35,22 @@ const DEFAULT_PERMISSIONS = {
 };
 
 const list = async (req, res) => {
-  const Permission = mongoose.model('Permission');
-
-  // Seed any missing role documents with defaults
+  // Seed any missing role rows with defaults
   await Promise.all(
     NON_OWNER_ROLES.map((role) =>
-      Permission.findOneAndUpdate(
-        { role },
-        { $setOnInsert: { permissions: DEFAULT_PERMISSIONS } },
-        { upsert: true, new: true }
-      )
+      models.Permission.findOrCreate({
+        where: { role },
+        defaults: { permissions: DEFAULT_PERMISSIONS },
+      })
     )
   );
 
-  const docs = await Permission.find({ role: { $in: NON_OWNER_ROLES } }).sort({ role: 1 }).lean();
+  const docs = await models.Permission.findAll({
+    where: { role: NON_OWNER_ROLES },
+    order: [['role', 'ASC']],
+  });
   const result = docs.map((doc) => ({
-    ...doc,
+    ...doc.toJSON(),
     permissions: { ...DEFAULT_PERMISSIONS, ...doc.permissions },
   }));
 
@@ -61,7 +62,6 @@ const list = async (req, res) => {
 };
 
 const update = async (req, res) => {
-  const Permission = mongoose.model('Permission');
   const { role, permissions } = req.body;
 
   if (!role || !permissions) {
@@ -80,11 +80,13 @@ const update = async (req, res) => {
     });
   }
 
-  const result = await Permission.findOneAndUpdate(
-    { role },
-    { $set: { permissions } },
-    { new: true, upsert: true }
+  // Postgres upsert returns [instance, created] via RETURNING.
+  const [upserted] = await models.Permission.upsert(
+    { role, permissions },
+    { returning: true }
   );
+  // Defensive fallback: re-fetch the row if the driver did not surface it.
+  const result = upserted || (await models.Permission.findOne({ where: { role } }));
 
   return res.status(200).json({
     success: true,
@@ -106,19 +108,13 @@ const listMy = async (req, res) => {
     });
   }
 
-  const Permission = mongoose.model('Permission');
-
-  let rolePermission = await Permission.findOne({ role: user.role }).lean();
-  if (!rolePermission) {
-    rolePermission = await Permission.findOneAndUpdate(
-      { role: user.role },
-      { $setOnInsert: { permissions: DEFAULT_PERMISSIONS } },
-      { upsert: true, new: true, lean: true }
-    );
-  }
+  const [rolePermission] = await models.Permission.findOrCreate({
+    where: { role: user.role },
+    defaults: { permissions: DEFAULT_PERMISSIONS },
+  });
 
   const merged = {
-    ...rolePermission,
+    ...rolePermission.toJSON(),
     permissions: { ...DEFAULT_PERMISSIONS, ...rolePermission.permissions },
   };
 

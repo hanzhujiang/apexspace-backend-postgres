@@ -1,7 +1,6 @@
-const mongoose = require('mongoose');
+const { models, sequelize } = require('@/db');
+const { Op } = require('sequelize');
 const moment = require('moment');
-
-const InvoiceModel = mongoose.model('Invoice');
 
 const summary = async (Model, req, res) => {
   let defaultType = 'month';
@@ -18,68 +17,34 @@ const summary = async (Model, req, res) => {
   }
 
   const currentDate = moment();
-  let startDate = currentDate.clone().startOf(defaultType);
-  let endDate = currentDate.clone().endOf(defaultType);
+  const startDate = currentDate.clone().startOf(defaultType).toDate();
+  const endDate = currentDate.clone().endOf(defaultType).toDate();
 
-  const pipeline = [
-    {
-      $facet: {
-        totalClients: [
-          {
-            $match: {
-              removed: false,
-              enabled: true,
-            },
-          },
-          {
-            $count: 'count',
-          },
-        ],
-        newClients: [
-          {
-            $match: {
-              removed: false,
-              created: { $gte: startDate.toDate(), $lte: endDate.toDate() },
-              enabled: true,
-            },
-          },
-          {
-            $count: 'count',
-          },
-        ],
-        activeClients: [
-          {
-            $lookup: {
-              from: InvoiceModel.collection.name,
-              localField: '_id', // Match _id from ClientModel
-              foreignField: 'client', // Match client field in InvoiceModel
-              as: 'invoice',
-            },
-          },
-          {
-            $match: {
-              'invoice.removed': false,
-            },
-          },
-          {
-            $group: {
-              _id: '$_id',
-            },
-          },
-          {
-            $count: 'count',
-          },
-        ],
+  const [totalClients, totalNewClients, activeClientsRows] = await Promise.all([
+    Model.count({
+      where: { removed: false, enabled: true },
+    }),
+    Model.count({
+      where: {
+        removed: false,
+        enabled: true,
+        created: { [Op.gte]: startDate, [Op.lte]: endDate },
       },
-    },
-  ];
+    }),
+    sequelize.query(
+      `SELECT COUNT(DISTINCT c.id) AS count
+         FROM clients c
+         INNER JOIN invoices i ON i.client_id = c.id
+         WHERE c.removed = false
+           AND c.enabled = true
+           AND i.removed = false`,
+      { type: sequelize.QueryTypes.SELECT }
+    ),
+  ]);
 
-  const aggregationResult = await Model.aggregate(pipeline);
-
-  const result = aggregationResult[0];
-  const totalClients = result.totalClients[0] ? result.totalClients[0].count : 0;
-  const totalNewClients = result.newClients[0] ? result.newClients[0].count : 0;
-  const activeClients = result.activeClients[0] ? result.activeClients[0].count : 0;
+  const activeClients = activeClientsRows && activeClientsRows[0]
+    ? parseInt(activeClientsRows[0].count, 10) || 0
+    : 0;
 
   const totalActiveClientsPercentage = totalClients > 0 ? (activeClients / totalClients) * 100 : 0;
   const totalNewClientsPercentage = totalClients > 0 ? (totalNewClients / totalClients) * 100 : 0;

@@ -5,6 +5,7 @@ const updateProfilePassword = require('./updateProfilePassword');
 const createAdmin = require('./createAdmin');
 const listAdmins = require('./listAdmins');
 const updateAdmin = require('./updateAdmin');
+const listSessions = require('./listSessions');
 
 const createUserController = (userModel) => {
   let userController = {};
@@ -15,6 +16,7 @@ const createUserController = (userModel) => {
   userController.createAdmin = (req, res) => createAdmin(userModel, req, res);
   userController.listAdmins = (req, res) => listAdmins(userModel, req, res);
   userController.updateAdmin = (req, res) => updateAdmin(userModel, req, res);
+  userController.listSessions = (req, res) => listSessions(userModel, req, res);
 
   userController.read = (req, res) => read(userModel, req, res);
 

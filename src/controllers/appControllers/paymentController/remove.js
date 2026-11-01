@@ -1,62 +1,56 @@
-const mongoose = require('mongoose');
+const { models, sequelize } = require('@/db');
 
-const Model = mongoose.model('Payment');
-const Invoice = mongoose.model('Invoice');
+const { calculate } = require('@/helpers');
 
 const remove = async (req, res) => {
-  // Find document by id and updates with the required fields
-  const previousPayment = await Model.findOne({
-    _id: req.params.id,
-    removed: false,
+  const outcome = await sequelize.transaction(async (t) => {
+    const previousPayment = await models.Payment.findOne({
+      where: { id: req.params.id, removed: false },
+      transaction: t,
+    });
+
+    if (!previousPayment) {
+      return { __error: { status: 404, message: 'No document found ' } };
+    }
+
+    const invoice = await models.Invoice.findOne({
+      where: { id: previousPayment.invoice_id },
+      transaction: t,
+    });
+
+    const previousAmount = Number(previousPayment.amount);
+
+    await previousPayment.update({ removed: true }, { transaction: t });
+
+    if (invoice) {
+      const total = Number(invoice.total);
+      const discount = Number(invoice.discount);
+      const previousCredit = Number(invoice.credit);
+      const newCredit = calculate.sub(previousCredit, previousAmount);
+
+      const paymentStatus =
+        calculate.sub(total, discount) === newCredit
+          ? 'paid'
+          : newCredit > 0
+          ? 'partially'
+          : 'unpaid';
+
+      await invoice.decrement('credit', { by: previousAmount, transaction: t });
+      await invoice.update({ paymentStatus }, { transaction: t });
+    }
+
+    return { paymentId: previousPayment.id };
   });
 
-  if (!previousPayment) {
-    return res.status(404).json({
+  if (outcome && outcome.__error) {
+    return res.status(outcome.__error.status).json({
       success: false,
       result: null,
-      message: 'No document found ',
+      message: outcome.__error.message,
     });
   }
 
-  const { _id: paymentId, amount: previousAmount } = previousPayment;
-  const { id: invoiceId, total, discount, credit: previousCredit } = previousPayment.invoice;
-
-  // Find the document by id and delete it
-  let updates = {
-    removed: true,
-  };
-  // Find the document by id and delete it
-  const result = await Model.findOneAndUpdate(
-    { _id: req.params.id, removed: false },
-    { $set: updates },
-    {
-      new: true, // return the new result instead of the old one
-    }
-  ).exec();
-  // If no results found, return document not found
-
-  let paymentStatus =
-    total - discount === previousCredit - previousAmount
-      ? 'paid'
-      : previousCredit - previousAmount > 0
-      ? 'partially'
-      : 'unpaid';
-
-  const updateInvoice = await Invoice.findOneAndUpdate(
-    { _id: invoiceId },
-    {
-      $pull: {
-        payment: paymentId,
-      },
-      $inc: { credit: -previousAmount },
-      $set: {
-        paymentStatus: paymentStatus,
-      },
-    },
-    {
-      new: true, // return the new result instead of the old one
-    }
-  ).exec();
+  const result = await models.Payment.findOne({ where: { id: outcome.paymentId } });
 
   return res.status(200).json({
     success: true,
@@ -64,4 +58,5 @@ const remove = async (req, res) => {
     message: 'Successfully Deleted the document ',
   });
 };
+
 module.exports = remove;

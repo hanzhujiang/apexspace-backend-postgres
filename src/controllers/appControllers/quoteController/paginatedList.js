@@ -1,53 +1,36 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Quote');
+const { models, Op } = require('@/db');
 
 const paginatedList = async (req, res) => {
-  const page = req.query.page || 1;
+  const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.items) || 10;
-  const skip = page * limit - limit;
+  const offset = (page - 1) * limit;
 
-  //  Query the database for a list of all results
-  const { sortBy = 'enabled', sortValue = -1, filter, equal } = req.query;
+  const { sortBy = 'id', sortValue = -1, filter, equal, q, fields } = req.query;
 
-  const fieldsArray = req.query.fields ? req.query.fields.split(',') : [];
-
-  let fields;
-
-  fields = fieldsArray.length === 0 ? {} : { $or: [] };
-
-  for (const field of fieldsArray) {
-    fields.$or.push({ [field]: { $regex: new RegExp(req.query.q, 'i') } });
+  const where = { removed: false };
+  if (filter && equal !== undefined) where[filter] = equal;
+  if (q && fields) {
+    where[Op.or] = fields.split(',').map((f) => ({ [f]: { [Op.iLike]: `%${q}%` } }));
   }
 
-  //  Query the database for a list of all results
-  const resultsPromise = Model.find({
-    removed: false,
+  const order = [[sortBy, sortValue == -1 || sortValue === 'desc' ? 'DESC' : 'ASC']];
 
-    [filter]: equal,
-    ...fields,
-  })
-    .skip(skip)
-    .limit(limit)
-    .sort({ [sortBy]: sortValue })
-    .populate('createdBy', 'name')
-    .exec();
-
-  // Counting the total documents
-  const countPromise = Model.countDocuments({
-    removed: false,
-
-    [filter]: equal,
-    ...fields,
+  const { rows: result, count } = await models.Quote.findAndCountAll({
+    where,
+    include: [
+      { model: models.QuoteItem, as: 'items' },
+      { model: models.Client, as: 'client' },
+      { model: models.Admin, as: 'createdBy', attributes: ['id', 'name'] },
+    ],
+    offset,
+    limit,
+    order,
+    distinct: true,
   });
 
-  // Resolving both promises
-  const [result, count] = await Promise.all([resultsPromise, countPromise]);
-  // Calculating total pages
   const pages = Math.ceil(count / limit);
-
-  // Getting Pagination Object
   const pagination = { page, pages, count };
+
   if (count > 0) {
     return res.status(200).json({
       success: true,
@@ -55,14 +38,13 @@ const paginatedList = async (req, res) => {
       pagination,
       message: 'Successfully found all documents',
     });
-  } else {
-    return res.status(203).json({
-      success: true,
-      result: [],
-      pagination,
-      message: 'Collection is Empty',
-    });
   }
+  return res.status(203).json({
+    success: true,
+    result: [],
+    pagination,
+    message: 'Collection is Empty',
+  });
 };
 
 module.exports = paginatedList;

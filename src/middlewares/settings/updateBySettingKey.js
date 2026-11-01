@@ -1,30 +1,31 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Setting');
+const { models } = require('@/db');
 
 const updateBySettingKey = async ({ settingKey, settingValue }) => {
   try {
-    if (!settingKey || !settingValue) {
+    if (!settingKey || settingValue === undefined || settingValue === null) {
       return null;
     }
 
-    const result = await Model.findOneAndUpdate(
-      { settingKey },
-      {
-        settingValue,
-      },
-      {
-        new: true, // return the new result instead of the old one
-        runValidators: true,
-      }
-    ).exec();
-    // If no results found, return document not found
+    const [affectedCount, affectedRows] = await models.Setting.update(
+      { settingValue },
+      { where: { settingKey }, returning: true }
+    );
+
+    if (!affectedCount) {
+      return null;
+    }
+
+    const updated = Array.isArray(affectedRows) ? affectedRows[0] : null;
+    if (updated) {
+      return updated;
+    }
+
+    // Fallback for dialects that do not support RETURNING
+    const result = await models.Setting.findOne({ where: { settingKey } });
     if (!result) {
       return null;
-    } else {
-      // Return success resposne
-      return result;
     }
+    return result;
   } catch {
     return null;
   }

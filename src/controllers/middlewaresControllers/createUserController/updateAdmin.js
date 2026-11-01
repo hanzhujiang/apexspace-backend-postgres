@@ -1,10 +1,10 @@
-const mongoose = require('mongoose');
+const { models } = require('@/db');
 const { ALL_ROLES } = require('../../../constants/roles');
 
 const ALLOWED_ROLES = ALL_ROLES;
 
 const updateAdmin = async (userModel, req, res) => {
-  const User = mongoose.model(userModel);
+  const Model = models[userModel];
   const { id } = req.params;
   const { role, enabled } = req.body;
 
@@ -17,15 +17,18 @@ const updateAdmin = async (userModel, req, res) => {
   }
   if (enabled !== undefined) updates.enabled = enabled;
 
-  const result = await User.findOneAndUpdate(
-    { _id: id, removed: false },
-    { $set: updates },
-    { new: true }
-  ).select('_id name surname email role enabled photo').exec();
+  const [count] = await Model.update(updates, {
+    where: { id, removed: false },
+  });
 
-  if (!result) {
+  if (count === 0) {
     return res.status(404).json({ success: false, result: null, message: 'Admin not found.' });
   }
+
+  const result = await Model.findOne({
+    where: { id },
+    attributes: ['id', 'name', 'surname', 'email', 'role', 'enabled', 'photo'],
+  });
 
   return res.status(200).json({
     success: true,

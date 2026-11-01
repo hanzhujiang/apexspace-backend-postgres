@@ -23,6 +23,7 @@ router.route('/admin/profile/password').patch(catchErrors(adminController.update
 router.route('/admin/create').post(adminAuth.requireOwner, catchErrors(adminController.createAdmin));
 router.route('/admin/list').get(adminAuth.requireOwner, catchErrors(adminController.listAdmins));
 router.route('/admin/update/:id').patch(adminAuth.requireOwner, catchErrors(adminController.updateAdmin));
+router.route('/user-sessions').get(adminAuth.requireOwner, catchErrors(adminController.listSessions));
 router
   .route('/admin/profile/update')
   .patch(

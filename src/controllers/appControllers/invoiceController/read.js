@@ -1,15 +1,16 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Invoice');
+const { models } = require('@/db');
 
 const read = async (req, res) => {
   // Find document by id
-  const result = await Model.findOne({
-    _id: req.params.id,
-    removed: false,
-  })
-    .populate('createdBy', 'name')
-    .exec();
+  const result = await models.Invoice.findOne({
+    where: { id: req.params.id, removed: false },
+    include: [
+      { model: models.Admin, as: 'createdBy', attributes: ['id', 'name'] },
+      { model: models.Client, as: 'client' },
+      { model: models.InvoiceItem, as: 'items' },
+      { model: models.Payment, as: 'payment' },
+    ],
+  });
   // If no results found, return document not found
   if (!result) {
     return res.status(404).json({

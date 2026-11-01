@@ -1,43 +1,37 @@
-const mongoose = require('mongoose');
+const { models } = require('@/db');
 
 const updateProfile = async (userModel, req, res) => {
-  const User = mongoose.model(userModel);
+  const Model = models[userModel];
 
   const reqUserName = userModel.toLowerCase();
   const userProfile = req[reqUserName];
 
-  let updates = req.body.photo
-    ? {
-        email: req.body.email,
-        name: req.body.name,
-        surname: req.body.surname,
-        photo: req.body.photo,
-      }
-    : {
-        email: req.body.email,
-        name: req.body.name,
-        surname: req.body.surname,
-      };
-  // Find document by id and updates with the required fields
-  const result = await User.findOneAndUpdate(
-    { _id: userProfile._id, removed: false },
-    { $set: updates },
-    {
-      new: true, // return the new result instead of the old one
-    }
-  ).exec();
+  const updates = {
+    email: req.body.email,
+    name: req.body.name,
+    surname: req.body.surname,
+  };
+  if (req.body.photo) updates.photo = req.body.photo;
 
-  if (!result) {
+  // Find row by id and apply updates
+  const [count] = await Model.update(updates, {
+    where: { id: userProfile.id, removed: false },
+  });
+
+  if (count === 0) {
     return res.status(404).json({
       success: false,
       result: null,
-      message: 'No profile found by this id: ' + userProfile._id,
+      message: 'No profile found by this id: ' + userProfile.id,
     });
   }
+
+  const result = await Model.findOne({ where: { id: userProfile.id } });
+
   return res.status(200).json({
     success: true,
     result: {
-      _id: result?._id,
+      _id: result?.id,
       enabled: result?.enabled,
       email: result?.email,
       name: result?.name,
@@ -45,7 +39,7 @@ const updateProfile = async (userModel, req, res) => {
       photo: result?.photo,
       role: result?.role,
     },
-    message: 'we update this profile by this id: ' + userProfile._id,
+    message: 'we update this profile by this id: ' + userProfile.id,
   });
 };
 

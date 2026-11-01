@@ -1,8 +1,8 @@
-const mongoose = require('mongoose');
+const { models } = require('@/db');
 const createCRUDController = require('@/controllers/middlewaresControllers/createCRUDController');
 
 function modelController() {
-  const Model = mongoose.model('ProductCosts');
+  const Model = models.ProductCosts;
   const methods = createCRUDController('ProductCosts');
 
   const genericCreate = methods.create;
@@ -13,14 +13,18 @@ function modelController() {
       const newDateFrom = new Date(date_from);
 
       // Close the current open-ended entry for this SKU
-      const openEntry = await Model.findOne({ sku, date_to: null, removed: { $ne: true } }).sort({ date_from: -1 });
+      const openEntry = await Model.findOne({
+        where: { sku, date_to: null, removed: false },
+        order: [['date_from', 'DESC']],
+      });
       if (openEntry) {
         const closeDate = new Date(newDateFrom);
         closeDate.setDate(closeDate.getDate() - 1);
         closeDate.setHours(23, 59, 59, 999);
-        openEntry.date_to = closeDate;
-        openEntry.updated = new Date();
-        await openEntry.save();
+        await Model.update(
+          { date_to: closeDate, updated: new Date() },
+          { where: { id: openEntry.id } }
+        );
       }
     }
 

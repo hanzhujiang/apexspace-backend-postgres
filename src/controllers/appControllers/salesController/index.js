@@ -1,22 +1,24 @@
-const mongoose = require('mongoose');
+const { models, Op, sequelize } = require('@/db');
 const createCRUDController = require('@/controllers/middlewaresControllers/createCRUDController');
 
+// Overlay point-in-time cost_aud onto each sales row from ProductCosts (SKU + date window).
+// Does NOT mutate the sales table.
 async function enrichWithSkuCosts(sales) {
   if (!sales.length) return sales;
 
-  const ProductCosts = mongoose.model('ProductCosts');
+  const ProductCosts = models.ProductCosts;
   const skus = [...new Set(sales.map((s) => s.sku).filter(Boolean))];
-  if (!skus.length) return sales.map((s) => (s.toObject ? s.toObject() : { ...s }));
+  const toPlain = (s) => (typeof s.toJSON === 'function' ? s.toJSON() : { ...s });
 
-  const costEntries = await ProductCosts.find({
-    sku: { $in: skus },
-    removed: { $ne: true },
-  })
-    .lean()
-    .exec();
+  if (!skus.length) return sales.map(toPlain);
+
+  const costEntries = await ProductCosts.findAll({
+    where: { sku: { [Op.in]: skus }, removed: false },
+    raw: true,
+  });
 
   return sales.map((sale) => {
-    const plain = sale.toObject ? sale.toObject() : { ...sale };
+    const plain = toPlain(sale);
     if (!plain.sku || !plain.date) return plain;
 
     const saleDate = new Date(plain.date);
@@ -35,37 +37,57 @@ async function enrichWithSkuCosts(sales) {
 }
 
 async function salesList(Model, req, res) {
-  const page = req.query.page || 1;
+  const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.items) || 10;
-  const skip = page * limit - limit;
+  const offset = page * limit - limit;
 
   const fieldsArray = req.query.fields ? req.query.fields.split(',') : [];
-  let searchFilter = {};
+  const andClauses = [{ removed: false }];
+
   if (fieldsArray.length > 0) {
     const q = req.query.q || '';
     const directFields = fieldsArray.filter((f) => f !== 'client_name');
-    const orClauses = directFields.map((field) => ({
-      [field]: { $regex: new RegExp(q, 'i') },
-    }));
+    const orClauses = directFields.map((field) => ({ [field]: { [Op.iLike]: `%${q}%` } }));
+
     if (fieldsArray.includes('client_name') && q) {
-      const Client = mongoose.model('Client');
-      const matchingClients = await Client.find(
-        { name: { $regex: new RegExp(q, 'i') }, removed: { $ne: true } },
-        '_id'
-      ).lean();
+      const matchingClients = await models.Client.findAll({
+        where: { name: { [Op.iLike]: `%${q}%` }, removed: false },
+        attributes: ['id'],
+        raw: true,
+      });
       if (matchingClients.length > 0) {
-        orClauses.push({ client: { $in: matchingClients.map((c) => c._id) } });
+        orClauses.push({ client_id: { [Op.in]: matchingClients.map((c) => c.id) } });
       }
     }
-    if (orClauses.length > 0) searchFilter.$or = orClauses;
+    if (orClauses.length > 0) andClauses.push({ [Op.or]: orClauses });
   }
 
-  const baseQuery = { removed: { $ne: true }, ...searchFilter };
+  if (req.query.filter && req.query.equal !== undefined) {
+    andClauses.push({ [req.query.filter]: req.query.equal });
+  }
+  if (req.query.date_from || req.query.date_to) {
+    const dateRange = {};
+    if (req.query.date_from) dateRange[Op.gte] = new Date(req.query.date_from);
+    if (req.query.date_to) dateRange[Op.lte] = new Date(req.query.date_to);
+    andClauses.push({ date: dateRange });
+  }
 
-  const [rawResult, count] = await Promise.all([
-    Model.find(baseQuery).skip(skip).limit(limit).sort({ shipping_no: 1, date: -1 }).exec(),
-    Model.countDocuments(baseQuery),
-  ]);
+  const where = { [Op.and]: andClauses };
+
+  const defaultInclude = Object.values(Model.associations || {}).map((assoc) => ({
+    model: assoc.target,
+    as: assoc.as,
+    required: false,
+  }));
+
+  const { rows: rawResult, count } = await Model.findAndCountAll({
+    where,
+    include: defaultInclude,
+    offset,
+    limit,
+    order: [['shipping_no', 'ASC'], ['date', 'DESC']],
+    distinct: true,
+  });
 
   const result = await enrichWithSkuCosts(rawResult);
   const pages = Math.ceil(count / limit);
@@ -78,86 +100,130 @@ async function salesList(Model, req, res) {
       pagination,
       message: 'Successfully found all documents',
     });
-  } else {
-    return res.status(203).json({
-      success: true,
-      result: [],
-      pagination,
-      message: 'Collection is Empty',
-    });
   }
+  return res.status(203).json({
+    success: true,
+    result: [],
+    pagination,
+    message: 'Collection is Empty',
+  });
 }
 
-async function resolveStockEntry(sku, warehouseNickName) {
+async function resolveStockEntry(sku, warehouseNickName, transaction) {
   if (!sku || !warehouseNickName) return null;
 
-  const Warehouse = mongoose.model('Warehouse');
-  const Inventory = mongoose.model('Inventory');
-
-  const warehouse = await Warehouse.findOne({ nick_name: warehouseNickName, removed: false });
+  const warehouse = await models.Warehouse.findOne({
+    where: { nick_name: warehouseNickName, removed: false },
+    transaction,
+  });
   if (!warehouse) return null;
 
-  const inventory = await Inventory.findOne({ sku, removed: false });
+  const inventory = await models.Inventory.findOne({
+    where: { sku, removed: false },
+    transaction,
+  });
   if (!inventory) return null;
 
-  return { inventory, warehouseId: warehouse.warehouse_id };
+  const stockRow = await models.InventoryWarehouseStock.findOne({
+    where: { inventory_id: inventory.id, warehouse_id: warehouse.warehouse_id },
+    transaction,
+  });
+
+  return { inventory, warehouseId: warehouse.warehouse_id, stockRow };
 }
 
-async function deductInventory(sku, warehouseNickName, quantity) {
-  const entry = await resolveStockEntry(sku, warehouseNickName);
-  if (!entry) return;
+async function deductInventory(sku, warehouseNickName, quantity, transaction) {
+  const entry = await resolveStockEntry(sku, warehouseNickName, transaction);
+  if (!entry || !entry.stockRow) return;
 
-  const { inventory, warehouseId } = entry;
-  const current = inventory.stock.get(warehouseId) ?? 0;
-  inventory.stock.set(warehouseId, current - Number(quantity));
+  const { inventory, stockRow } = entry;
+  const current = Number(stockRow.stock) || 0;
+  await stockRow.update({ stock: current - Number(quantity) }, { transaction });
 
-  let total = 0;
-  for (const val of inventory.stock.values()) total += Number(val) || 0;
-  inventory.stock_all = total;
-  inventory.updated = new Date();
-
-  await inventory.save();
+  const allRows = await models.InventoryWarehouseStock.findAll({
+    where: { inventory_id: inventory.id },
+    transaction,
+  });
+  const total = allRows.reduce((sum, r) => sum + (Number(r.stock) || 0), 0);
+  await models.Inventory.update(
+    { stock_all: total, updated: new Date() },
+    { where: { id: inventory.id }, transaction }
+  );
 }
 
 function modelController() {
-  const Model = mongoose.model('Sales');
+  const Model = models.Sales;
   const methods = createCRUDController('Sales');
 
   methods.create = async (req, res) => {
-    req.body.createdBy = req.admin._id;
-    req.body.removed = false;
+    const body = { ...req.body };
+    body.createdBy_id = req.admin.id;
+    body.removed = false;
 
-    const { sku, warehouse_location, quantity } = req.body;
-
-    if (sku && warehouse_location && quantity) {
-      const entry = await resolveStockEntry(sku, warehouse_location);
-      if (entry) {
-        const available = entry.inventory.stock.get(entry.warehouseId) ?? 0;
-        if (available < Number(quantity)) {
-          return res.status(400).json({
-            success: false,
-            result: null,
-            message: `Insufficient stock: only ${available} unit(s) available for this SKU at the selected warehouse.`,
-          });
-        }
-      }
-    }
+    const { sku, warehouse_location, quantity } = body;
 
     // cost_aud is not stored — computed from ProductCosts on every read
-    delete req.body.cost_aud;
+    delete body.cost_aud;
+    // Strip Mongoose-style foreign key names if client sent them
+    if (body.client && !body.client_id) {
+      body.client_id = body.client;
+    }
+    delete body.client;
+    delete body.createdBy;
 
-    const result = await new Model({ ...req.body }).save();
+    try {
+      const result = await sequelize.transaction(async (t) => {
+        if (sku && warehouse_location && quantity) {
+          const entry = await resolveStockEntry(sku, warehouse_location, t);
+          if (entry && entry.stockRow) {
+            const available = Number(entry.stockRow.stock) || 0;
+            if (available < Number(quantity)) {
+              const err = new Error(
+                `Insufficient stock: only ${available} unit(s) available for this SKU at the selected warehouse.`
+              );
+              err.__insufficientStock = true;
+              err.__available = available;
+              throw err;
+            }
+          }
+        }
 
-    await deductInventory(sku, warehouse_location, quantity);
+        const created = await Model.create(body, { transaction: t });
+        await deductInventory(sku, warehouse_location, quantity, t);
+        return created;
+      });
 
-    return res.status(200).json({
-      success: true,
-      result,
-      message: 'Successfully Created the document in Model',
-    });
+      return res.status(200).json({
+        success: true,
+        result,
+        message: 'Successfully Created the document in Model',
+      });
+    } catch (err) {
+      if (err.__insufficientStock) {
+        return res.status(400).json({ success: false, result: null, message: err.message });
+      }
+      throw err;
+    }
   };
 
   methods.list = (req, res) => salesList(Model, req, res);
+
+  methods.read = async (req, res) => {
+    const defaultInclude = Object.values(Model.associations || {}).map((assoc) => ({
+      model: assoc.target,
+      as: assoc.as,
+      required: false,
+    }));
+    const sale = await Model.findOne({
+      where: { id: req.params.id, removed: false },
+      include: defaultInclude,
+    });
+    if (!sale) {
+      return res.status(404).json({ success: false, result: null, message: 'No document found' });
+    }
+    const [enriched] = await enrichWithSkuCosts([sale]);
+    return res.status(200).json({ success: true, result: enriched, message: 'we found this document' });
+  };
 
   methods.recentChart = async (req, res) => {
     const days = Math.min(parseInt(req.query.days) || 7, 90);
@@ -175,19 +241,20 @@ function modelController() {
 
     const PLATFORMS = ['MyDeal', 'Amazon', 'Kogan', 'Bunnings', 'Shopify'];
 
-    const raw = await Model.aggregate([
-      { $match: { removed: { $ne: true }, date: { $gte: from, $lte: now } } },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: tz } },
-            platform: '$platform',
-          },
-          qty: { $sum: '$quantity' },
-        },
-      },
-      { $sort: { '_id.date': 1 } },
-    ]);
+    const sql = `
+      SELECT TO_CHAR((date AT TIME ZONE 'UTC') AT TIME ZONE :tz, 'YYYY-MM-DD') AS day,
+             platform,
+             SUM(quantity)::int AS qty
+      FROM sales
+      WHERE removed = false AND date >= :from AND date <= :now
+      GROUP BY day, platform
+      ORDER BY day ASC
+    `;
+
+    const raw = await sequelize.query(sql, {
+      replacements: { tz, from, now },
+      type: sequelize.QueryTypes.SELECT,
+    });
 
     // Build date range in user's local timezone (oldest → newest)
     const toLocalDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
@@ -197,17 +264,16 @@ function modelController() {
       dates.push(toLocalDate(d));
     }
 
-    // date → platform → qty
     const dataMap = {};
     for (const date of dates) {
       dataMap[date] = {};
       for (const p of PLATFORMS) dataMap[date][p] = 0;
     }
     for (const row of raw) {
-      const date = row._id.date;
+      const date = row.day;
       if (!dataMap[date]) continue;
-      const key = PLATFORMS.find((p) => p.toLowerCase() === (row._id.platform || '').toLowerCase());
-      if (key) dataMap[date][key] += row.qty;
+      const key = PLATFORMS.find((p) => p.toLowerCase() === (row.platform || '').toLowerCase());
+      if (key) dataMap[date][key] += Number(row.qty) || 0;
     }
 
     const chartData = dates.map((date) => {
@@ -226,38 +292,30 @@ function modelController() {
 
   methods.topSkus = async (req, res) => {
     const days = Math.min(parseInt(req.query.days) || 30, 365);
+    const showAll = req.query.all === 'true' || req.query.all === '1';
     const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const result = await Model.aggregate([
-      {
-        $match: {
-          removed: { $ne: true },
-          date: { $gte: from },
-          sku: { $exists: true, $ne: '' },
-        },
-      },
-      {
-        $group: {
-          _id: '$sku',
-          product_name: { $first: '$product_name' },
-          totalQty: { $sum: '$quantity' },
-        },
-      },
-      { $sort: { totalQty: -1 } },
-      { $limit: 10 },
-      { $project: { _id: 0, sku: '$_id', product_name: 1, totalQty: 1 } },
-    ]);
+    const limitClause = showAll ? '' : 'LIMIT 10';
+    const sql = `
+      SELECT sku,
+             MIN(product_name) AS product_name,
+             SUM(quantity)::int AS "totalQty"
+      FROM sales
+      WHERE removed = false
+        AND sku IS NOT NULL
+        AND sku <> ''
+        AND date >= :from
+      GROUP BY sku
+      ORDER BY "totalQty" DESC
+      ${limitClause}
+    `;
+
+    const result = await sequelize.query(sql, {
+      replacements: { from },
+      type: sequelize.QueryTypes.SELECT,
+    });
 
     return res.status(200).json({ success: true, result });
-  };
-
-  methods.read = async (req, res) => {
-    const sale = await Model.findOne({ _id: req.params.id, removed: false }).exec();
-    if (!sale) {
-      return res.status(404).json({ success: false, result: null, message: 'No document found' });
-    }
-    const [enriched] = await enrichWithSkuCosts([sale]);
-    return res.status(200).json({ success: true, result: enriched, message: 'we found this document' });
   };
 
   methods.employeePerformance = async (req, res) => {
@@ -272,29 +330,33 @@ function modelController() {
 
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const result = await Model.aggregate([
-      { $match: { removed: { $ne: true }, date: { $gte: monthStart } } },
-      {
-        $group: {
-          _id: '$createdBy',
-          today: { $sum: { $cond: [{ $gte: ['$date', todayStart] }, 1, 0] } },
-          week: { $sum: { $cond: [{ $gte: ['$date', weekStart] }, 1, 0] } },
-          month: { $sum: 1 },
-        },
-      },
-      { $lookup: { from: 'admins', localField: '_id', foreignField: '_id', as: 'admin' } },
-      { $unwind: '$admin' },
-      {
-        $project: {
-          _id: 0,
-          admin: { _id: 1, name: 1, role: 1, photo: 1 },
-          today: 1,
-          week: 1,
-          month: 1,
-        },
-      },
-      { $sort: { month: -1 } },
-    ]);
+    const sql = `
+      SELECT a.id,
+             a.name,
+             a.role,
+             a.photo,
+             COUNT(*) FILTER (WHERE s.date >= :todayStart)::int AS today,
+             COUNT(*) FILTER (WHERE s.date >= :weekStart)::int  AS week,
+             COUNT(*)::int AS month
+      FROM sales s
+      INNER JOIN admins a ON a.id = s."createdBy_id"
+      WHERE s.removed = false AND s.date >= :monthStart
+      GROUP BY a.id, a.name, a.role, a.photo
+      ORDER BY month DESC
+    `;
+
+    const rows = await sequelize.query(sql, {
+      replacements: { todayStart, weekStart, monthStart },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Preserve the Mongoose response shape: { admin: {...}, today, week, month }
+    const result = rows.map((r) => ({
+      admin: { _id: r.id, id: r.id, name: r.name, role: r.role, photo: r.photo },
+      today: Number(r.today) || 0,
+      week: Number(r.week) || 0,
+      month: Number(r.month) || 0,
+    }));
 
     return res.status(200).json({ success: true, result });
   };

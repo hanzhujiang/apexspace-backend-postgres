@@ -1,6 +1,4 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Invoice');
+const { models, sequelize } = require('@/db');
 
 const { calculate } = require('@/helpers');
 const { increaseBySettingKey } = require('@/middlewares/settings');
@@ -37,27 +35,49 @@ const create = async (req, res) => {
   taxTotal = calculate.multiply(subTotal, taxRate / 100);
   total = calculate.add(subTotal, taxTotal);
 
-  body['subTotal'] = subTotal;
-  body['taxTotal'] = taxTotal;
-  body['total'] = total;
-  body['items'] = items;
-
   let paymentStatus = calculate.sub(total, discount) === 0 ? 'paid' : 'unpaid';
 
-  body['paymentStatus'] = paymentStatus;
-  body['createdBy'] = req.admin._id;
+  // Map Mongoose-style refs to Sequelize FK columns.
+  const clientId =
+    body.client && typeof body.client === 'object' ? body.client.id : body.client;
 
-  // Creating a new document in the collection
-  const result = await new Model(body).save();
-  const fileId = 'invoice-' + result._id + '.pdf';
-  const updateResult = await Model.findOneAndUpdate(
-    { _id: result._id },
-    { pdf: fileId },
-    {
-      new: true,
+  const invoicePayload = {
+    ...body,
+    client_id: clientId,
+    createdBy_id: req.admin.id,
+    subTotal,
+    taxTotal,
+    total,
+    paymentStatus,
+  };
+  delete invoicePayload.client;
+  delete invoicePayload.createdBy;
+  delete invoicePayload.items;
+
+  const result = await sequelize.transaction(async (t) => {
+    const invoice = await models.Invoice.create(invoicePayload, { transaction: t });
+    await invoice.update({ pdf: 'invoice-' + invoice.id + '.pdf' }, { transaction: t });
+
+    if (items.length > 0) {
+      await models.InvoiceItem.bulkCreate(
+        items.map((item) => ({
+          itemName: item.itemName,
+          description: item.description,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+          invoice_id: invoice.id,
+        })),
+        { transaction: t }
+      );
     }
-  ).exec();
-  // Returning successfull response
+
+    return models.Invoice.findOne({
+      where: { id: invoice.id },
+      include: [{ model: models.InvoiceItem, as: 'items' }],
+      transaction: t,
+    });
+  });
 
   increaseBySettingKey({
     settingKey: 'last_invoice_number',
@@ -66,7 +86,7 @@ const create = async (req, res) => {
   // Returning successfull response
   return res.status(200).json({
     success: true,
-    result: updateResult,
+    result,
     message: 'Invoice created successfully',
   });
 };

@@ -1,10 +1,10 @@
-const mongoose = require('mongoose');
+const { models } = require('@/db');
 const createCRUDController = require('@/controllers/middlewaresControllers/createCRUDController');
 
 const summary = require('./summary');
 
 function modelController() {
-  const Model = mongoose.model('Client');
+  const Model = models.Client;
   const methods = createCRUDController('Client');
 
   methods.summary = (req, res) => summary(Model, req, res);

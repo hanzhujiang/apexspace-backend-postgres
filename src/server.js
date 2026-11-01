@@ -1,39 +1,33 @@
 require('module-alias/register');
-const mongoose = require('mongoose');
-const { globSync } = require('glob');
-const path = require('path');
 
-// Make sure we are running node 7.6+
-const [major, minor] = process.versions.node.split('.').map(parseFloat);
+const [major] = process.versions.node.split('.').map(parseFloat);
 if (major < 20) {
-  console.log('Please upgrade your node.js version at least 20 or greater. 👌\n ');
+  console.log('Please upgrade node.js to v20 or greater.');
   process.exit();
 }
 
-// import environmental variables from our variables.env file
 require('dotenv').config({ path: '.env' });
 require('dotenv').config({ path: '.env.local' });
 
-mongoose.connect(process.env.DATABASE);
+const { sequelize, syncDatabase } = require('@/db');
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+async function start() {
+  try {
+    await sequelize.authenticate();
+    console.log('PostgreSQL connection established.');
 
-mongoose.connection.on('error', (error) => {
-  console.log(
-    `1. 🔥 Common Error caused issue → : check your .env file first and add your mongodb url`
-  );
-  console.error(`2. 🚫 Error → : ${error.message}`);
-});
+    // Sync schema (alter: true is safe for iterative dev; use migrations for production)
+    await syncDatabase({ alter: process.env.NODE_ENV !== 'production' });
 
-const modelsFiles = globSync('./src/models/**/*.js');
-
-for (const filePath of modelsFiles) {
-  require(path.resolve(filePath));
+    const app = require('./app');
+    app.set('port', process.env.PORT || 8888);
+    const server = app.listen(app.get('port'), () => {
+      console.log(`Express running → PORT ${server.address().port}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error.message);
+    process.exit(1);
+  }
 }
 
-// Start our app!
-const app = require('./app');
-app.set('port', process.env.PORT || 8888);
-const server = app.listen(app.get('port'), () => {
-  console.log(`Express running → On PORT : ${server.address().port}`);
-});
+start();

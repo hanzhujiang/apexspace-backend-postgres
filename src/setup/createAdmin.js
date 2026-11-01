@@ -1,8 +1,10 @@
 require('dotenv').config({ path: '.env' });
 require('dotenv').config({ path: '.env.local' });
 
+const bcrypt = require('bcryptjs');
 const { generate: uniqueId } = require('shortid');
-const mongoose = require('mongoose');
+const { models, sequelize } = require('../db');
+const { NON_OWNER_ROLES } = require('../constants/roles');
 
 // Parse --key=value args
 const args = process.argv.slice(2).reduce((acc, arg) => {
@@ -39,51 +41,49 @@ const DEFAULT_PERMISSIONS = {
 };
 
 async function createAdmin() {
-  await mongoose.connect(process.env.DATABASE);
-
   try {
-    const Admin = require('../models/coreModels/Admin');
-    const AdminPassword = require('../models/coreModels/AdminPassword');
-    const Permission = require('../models/coreModels/Permission');
-    const { NON_OWNER_ROLES } = require('../constants/roles');
+    await sequelize.authenticate();
 
-    const existing = await Admin.findOne({ email, removed: false });
+    const existing = await models.Admin.findOne({ where: { email, removed: false } });
     if (existing) {
       console.error(`❌ An admin with email "${email}" already exists.`);
       process.exit(1);
     }
 
-    const result = await new Admin({ email, name, surname, enabled: true, role: 'owner' }).save();
+    const admin = await models.Admin.create({
+      email,
+      name,
+      surname,
+      enabled: true,
+      role: 'owner',
+    });
 
-    const newAdminPassword = new AdminPassword();
     const salt = uniqueId();
-    const passwordHash = newAdminPassword.generateHash(salt, password);
+    const passwordHash = bcrypt.hashSync(salt + password, 10);
 
-    await new AdminPassword({
+    await models.AdminPassword.create({
+      admin_id: admin.id,
       password: passwordHash,
       salt,
       emailVerified: true,
-      user: result._id,
-    }).save();
+    });
 
     console.log(`✅ Admin created: ${email}`);
 
-    // Seed permission documents for all non-owner roles (upsert — safe to run multiple times)
-    await Promise.all(
-      NON_OWNER_ROLES.map((role) =>
-        Permission.findOneAndUpdate(
-          { role },
-          { $setOnInsert: { permissions: DEFAULT_PERMISSIONS } },
-          { upsert: true, new: true }
-        )
-      )
-    );
+    // Seed permission rows for all non-owner roles (idempotent via findOrCreate)
+    for (const role of NON_OWNER_ROLES) {
+      await models.Permission.findOrCreate({
+        where: { role },
+        defaults: { role, permissions: DEFAULT_PERMISSIONS },
+      });
+    }
 
     console.log(`✅ Permissions seeded for roles: ${NON_OWNER_ROLES.join(', ')}`);
+    process.exit(0);
   } catch (e) {
     console.error('❌ Error creating admin:', e.message);
-  } finally {
-    process.exit();
+    console.error(e);
+    process.exit(1);
   }
 }
 

@@ -1,10 +1,11 @@
-const mongoose = require('mongoose');
+const { models } = require('@/db');
 const { generate: uniqueId } = require('shortid');
+const bcrypt = require('bcryptjs');
 const { ALL_ROLES } = require('../../../constants/roles');
 
 const createAdmin = async (userModel, req, res) => {
-  const User = mongoose.model(userModel);
-  const UserPassword = mongoose.model(userModel + 'Password');
+  const Model = models[userModel];
+  const PasswordModel = models[userModel + 'Password'];
 
   const { email, name, surname, password, role } = req.body;
 
@@ -33,7 +34,9 @@ const createAdmin = async (userModel, req, res) => {
     });
   }
 
-  const existing = await User.findOne({ email: email.toLowerCase(), removed: false });
+  const existing = await Model.findOne({
+    where: { email: email.toLowerCase(), removed: false },
+  });
   if (existing) {
     return res.status(409).json({
       success: false,
@@ -42,29 +45,28 @@ const createAdmin = async (userModel, req, res) => {
     });
   }
 
-  const newUser = await new User({
+  const newUser = await Model.create({
     email,
     name,
     surname: surname || '',
     enabled: true,
     role: assignedRole,
-  }).save();
+  });
 
-  const newUserPassword = new UserPassword();
   const salt = uniqueId();
-  const passwordHash = newUserPassword.generateHash(salt, password);
+  const passwordHash = bcrypt.hashSync(salt + password);
 
-  await new UserPassword({
+  await PasswordModel.create({
     password: passwordHash,
     salt,
     emailVerified: true,
-    user: newUser._id,
-  }).save();
+    admin_id: newUser.id,
+  });
 
   return res.status(200).json({
     success: true,
     result: {
-      _id: newUser._id,
+      _id: newUser.id,
       email: newUser.email,
       name: newUser.name,
       surname: newUser.surname,

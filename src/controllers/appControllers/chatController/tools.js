@@ -1,40 +1,40 @@
 const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
-const mongoose = require('mongoose');
+const { models, Op, sequelize } = require('@/db');
 
 const getSalesSummary = tool(
   async ({ status, from, to }) => {
-    const Sales = mongoose.model('Sales');
+    const Sales = models.Sales;
 
-    const match = { removed: { $ne: true } };
-    if (status) match.status = status;
+    const where = { removed: false };
+    if (status) where.status = status;
     if (from || to) {
-      match.date = {};
-      if (from) match.date.$gte = new Date(from);
-      if (to) match.date.$lte = new Date(to);
+      where.date = {};
+      if (from) where.date[Op.gte] = new Date(from);
+      if (to) where.date[Op.lte] = new Date(to);
     }
 
-    const results = await Sales.aggregate([
-      { $match: match },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          totalRevenue: { $sum: '$sale_price_aud' },
-          totalCost: { $sum: '$cost_aud' },
-          totalGrossProfit: { $sum: '$gross_profit' },
-          totalQty: { $sum: '$quantity' },
-        },
-      },
-      { $sort: { totalRevenue: -1 } },
-    ]);
+    const results = await Sales.findAll({
+      where,
+      attributes: [
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+        [sequelize.fn('SUM', sequelize.col('sale_price_aud')), 'totalRevenue'],
+        [sequelize.fn('SUM', sequelize.col('cost_aud')), 'totalCost'],
+        [sequelize.fn('SUM', sequelize.col('gross_profit')), 'totalGrossProfit'],
+        [sequelize.fn('SUM', sequelize.col('quantity')), 'totalQty'],
+      ],
+      group: ['status'],
+      order: [[sequelize.literal('"totalRevenue"'), 'DESC']],
+      raw: true,
+    });
 
     if (results.length === 0) return 'No sales records found for the given filters.';
 
     return results
       .map(
         (r) =>
-          `Status: ${r._id || 'unknown'}, Orders: ${r.count}, Qty: ${r.totalQty}, Revenue: $${r.totalRevenue.toFixed(2)} AUD, Cost: $${r.totalCost.toFixed(2)} AUD, Gross Profit: $${r.totalGrossProfit.toFixed(2)} AUD`
+          `Status: ${r.status || 'unknown'}, Orders: ${Number(r.count)}, Qty: ${Number(r.totalQty) || 0}, Revenue: $${Number(r.totalRevenue || 0).toFixed(2)} AUD, Cost: $${Number(r.totalCost || 0).toFixed(2)} AUD, Gross Profit: $${Number(r.totalGrossProfit || 0).toFixed(2)} AUD`
       )
       .join('\n');
   },
@@ -55,41 +55,42 @@ const getSalesSummary = tool(
 
 const getTopSKUs = tool(
   async ({ from, to, limit, sortBy, platform, warehouse_location }) => {
-    const Sales = mongoose.model('Sales');
+    const Sales = models.Sales;
 
-    const match = { removed: { $ne: true }, sku: { $exists: true, $ne: '' } };
+    const where = { removed: false, sku: { [Op.ne]: '' } };
     if (from || to) {
-      match.date = {};
-      if (from) match.date.$gte = new Date(from);
-      if (to) match.date.$lte = new Date(to);
+      where.date = {};
+      if (from) where.date[Op.gte] = new Date(from);
+      if (to) where.date[Op.lte] = new Date(to);
     }
-    if (platform) match.platform = platform;
-    if (warehouse_location) match.warehouse_location = warehouse_location;
+    if (platform) where.platform = platform;
+    if (warehouse_location) where.warehouse_location = warehouse_location;
 
-    const sortField = sortBy === 'quantity' ? 'totalQty' : sortBy === 'orders' ? 'orderCount' : 'totalRevenue';
+    const sortField =
+      sortBy === 'quantity' ? 'totalQty' : sortBy === 'orders' ? 'orderCount' : 'totalRevenue';
 
-    const results = await Sales.aggregate([
-      { $match: match },
-      {
-        $group: {
-          _id: '$sku',
-          productName: { $first: '$product_name' },
-          totalRevenue: { $sum: '$sale_price_aud' },
-          totalCost: { $sum: '$cost_aud' },
-          totalQty: { $sum: '$quantity' },
-          orderCount: { $sum: 1 },
-        },
-      },
-      { $sort: { [sortField]: -1 } },
-      { $limit: limit || 10 },
-    ]);
+    const results = await Sales.findAll({
+      where,
+      attributes: [
+        'sku',
+        [sequelize.fn('MIN', sequelize.col('product_name')), 'productName'],
+        [sequelize.fn('SUM', sequelize.col('sale_price_aud')), 'totalRevenue'],
+        [sequelize.fn('SUM', sequelize.col('cost_aud')), 'totalCost'],
+        [sequelize.fn('SUM', sequelize.col('quantity')), 'totalQty'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'orderCount'],
+      ],
+      group: ['sku'],
+      order: [[sequelize.literal(`"${sortField}"`), 'DESC']],
+      limit: limit || 10,
+      raw: true,
+    });
 
     if (results.length === 0) return 'No SKU sales data found for the given filters.';
 
     return results
       .map(
         (r, i) =>
-          `${i + 1}. SKU: ${r._id} (${r.productName || 'unknown'}), Orders: ${r.orderCount}, Qty: ${r.totalQty}, Revenue: $${r.totalRevenue.toFixed(2)} AUD, Cost: $${r.totalCost.toFixed(2)} AUD`
+          `${i + 1}. SKU: ${r.sku} (${r.productName || 'unknown'}), Orders: ${Number(r.orderCount)}, Qty: ${Number(r.totalQty) || 0}, Revenue: $${Number(r.totalRevenue || 0).toFixed(2)} AUD, Cost: $${Number(r.totalCost || 0).toFixed(2)} AUD`
       )
       .join('\n');
   },

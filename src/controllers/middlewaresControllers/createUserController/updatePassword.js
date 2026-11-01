@@ -1,9 +1,9 @@
-const mongoose = require('mongoose');
+const { models } = require('@/db');
 const bcrypt = require('bcryptjs');
 const { generate: uniqueId } = require('shortid');
 
 const updatePassword = async (userModel, req, res) => {
-  const UserPassword = mongoose.model(userModel + 'Password');
+  const PasswordModel = models[userModel + 'Password'];
 
   const reqUserName = userModel.toLowerCase();
   const userProfile = req[reqUserName];
@@ -15,8 +15,6 @@ const updatePassword = async (userModel, req, res) => {
       msg: 'The password needs to be at least 8 characters long.',
     });
 
-  // Find document by id and updates with the required fields
-
   if (userProfile.email === 'admin@demo.com') {
     return res.status(403).json({
       success: false,
@@ -26,25 +24,14 @@ const updatePassword = async (userModel, req, res) => {
   }
 
   const salt = uniqueId();
-
   const passwordHash = bcrypt.hashSync(salt + password);
 
-  const UserPasswordData = {
-    password: passwordHash,
-    salt: salt,
-  };
+  const [count] = await PasswordModel.update(
+    { password: passwordHash, salt },
+    { where: { admin_id: req.params.id, removed: false } }
+  );
 
-  const resultPassword = await UserPassword.findOneAndUpdate(
-    { user: req.params.id, removed: false },
-    { $set: UserPasswordData },
-    {
-      new: true, // return the new result instead of the old one
-    }
-  ).exec();
-
-  // Code to handle the successful response
-
-  if (!resultPassword) {
+  if (count === 0) {
     return res.status(403).json({
       success: false,
       result: null,
@@ -55,7 +42,7 @@ const updatePassword = async (userModel, req, res) => {
   return res.status(200).json({
     success: true,
     result: {},
-    message: 'we update the password by this id: ' + userProfile._id,
+    message: 'we update the password by this id: ' + userProfile.id,
   });
 };
 

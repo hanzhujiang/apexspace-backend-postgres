@@ -1,49 +1,46 @@
-const { basename, extname } = require('path');
-const { globSync } = require('glob');
+/**
+ * Replicates the shape of the old Mongoose-based `src/models/utils` for the
+ * Sequelize backend. Previously this file globbed `src/models/appModels/*.js`
+ * to derive route/controller/model name triples; since Sequelize models live
+ * in `src/db/index.js`, we enumerate the app models here explicitly.
+ *
+ * Entity names (lowercase, URL path segments) match the original Mongoose
+ * filename-based derivation so route paths stay byte-identical with crm-backend.
+ */
 
-const appModelsFiles = globSync('./src/models/appModels/**/*.js');
+const appModelsList = [
+  'Client',
+  'Inventory',
+  'Invoice',
+  'KoganSkuWeight',
+  'Payment',
+  'PaymentMode',
+  'ProductCosts',
+  'Quote',
+  'Sales',
+  'Taxes',
+  'Warehouse',
+];
 
-const pattern = './src/models/**/*.js';
-
-const modelsFiles = globSync(pattern).map((filePath) => {
-  const fileNameWithExtension = basename(filePath);
-  const fileNameWithoutExtension = fileNameWithExtension.replace(
-    extname(fileNameWithExtension),
-    ''
-  );
-  return fileNameWithoutExtension;
+const routesList = appModelsList.map((modelName) => {
+  const first = modelName.charAt(0);
+  const camel = modelName.replace(first, first.toLowerCase());
+  return {
+    entity: modelName.toLowerCase(),
+    modelName,
+    controllerName: camel + 'Controller',
+  };
 });
 
-const constrollersList = [];
-const appModelsList = [];
-const entityList = [];
-const routesList = [];
+const controllersList = routesList.map((r) => r.controllerName);
+const entityList = routesList.map((r) => r.entity);
+const modelsFiles = appModelsList; // kept for backward compatibility; not used.
 
-for (const filePath of appModelsFiles) {
-  const fileNameWithExtension = basename(filePath);
-  const fileNameWithoutExtension = fileNameWithExtension.replace(
-    extname(fileNameWithExtension),
-    ''
-  );
-  const firstChar = fileNameWithoutExtension.charAt(0);
-  const modelName = fileNameWithoutExtension.replace(firstChar, firstChar.toUpperCase());
-  const fileNameLowerCaseFirstChar = fileNameWithoutExtension.replace(
-    firstChar,
-    firstChar.toLowerCase()
-  );
-  const entity = fileNameWithoutExtension.toLowerCase();
-
-  controllerName = fileNameLowerCaseFirstChar + 'Controller';
-  constrollersList.push(controllerName);
-  appModelsList.push(modelName);
-  entityList.push(entity);
-
-  const route = {
-    entity: entity,
-    modelName: modelName,
-    controllerName: controllerName,
-  };
-  routesList.push(route);
-}
-
-module.exports = { constrollersList, appModelsList, modelsFiles, entityList, routesList };
+module.exports = {
+  appModelsList,
+  controllersList,
+  constrollersList: controllersList, // mirror original (misspelled) export name
+  entityList,
+  modelsFiles,
+  routesList,
+};

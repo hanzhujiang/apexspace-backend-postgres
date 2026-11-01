@@ -1,12 +1,13 @@
-const mongoose = require('mongoose');
+const { models } = require('@/db');
 
 const listAdmins = async (userModel, req, res) => {
-  const User = mongoose.model(userModel);
+  const Model = models[userModel];
 
-  const results = await User.find({ removed: false })
-    .select('_id name surname email role enabled photo created')
-    .sort({ created: 1 })
-    .exec();
+  const results = await Model.findAll({
+    where: { removed: false },
+    attributes: ['id', 'name', 'surname', 'email', 'role', 'enabled', 'photo', 'created'],
+    order: [['created', 'ASC']],
+  });
 
   return res.status(200).json({
     success: true,

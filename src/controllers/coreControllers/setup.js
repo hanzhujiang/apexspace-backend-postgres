@@ -2,20 +2,13 @@ require('dotenv').config({ path: '.env' });
 require('dotenv').config({ path: '.env.local' });
 const { globSync } = require('glob');
 const fs = require('fs');
+const Joi = require('joi');
+const bcrypt = require('bcryptjs');
 const { generate: uniqueId } = require('shortid');
 
-const mongoose = require('mongoose');
+const { models, sequelize } = require('@/db');
 
 const setup = async (req, res) => {
-  const Admin = mongoose.model('Admin');
-  const AdminPassword = mongoose.model('AdminPassword');
-  const Setting = mongoose.model('Setting');
-
-  const PaymentMode = mongoose.model('PaymentMode');
-  const Taxes = mongoose.model('Taxes');
-
-  const newAdminPassword = new AdminPassword();
-
   const { name, email, password, language, timezone, country, config = {} } = req.body;
 
   const objectSchema = Joi.object({
@@ -26,44 +19,40 @@ const setup = async (req, res) => {
     password: Joi.string().required(),
   });
 
-  const { error, value } = objectSchema.validate({ name, email, password });
+  const { error } = objectSchema.validate({ name, email, password });
   if (error) {
     return res.status(409).json({
       success: false,
       result: null,
-      error: error,
+      error,
       message: 'Invalid/Missing credentials.',
       errorMessage: error.message,
     });
   }
 
-  const salt = uniqueId();
+  const t = await sequelize.transaction();
+  try {
+    const salt = uniqueId();
+    const passwordHash = bcrypt.hashSync(salt + password, 10);
 
-  const passwordHash = newAdminPassword.generateHash(salt, password);
+    const admin = await models.Admin.create(
+      { email, name, role: 'owner', enabled: true },
+      { transaction: t }
+    );
 
-  const accountOwnner = {
-    email,
-    name,
-    role: 'owner',
-  };
-  const result = await new Admin(accountOwnner).save();
+    await models.AdminPassword.create(
+      {
+        admin_id: admin.id,
+        password: passwordHash,
+        salt,
+        emailVerified: true,
+        authType: 'email',
+      },
+      { transaction: t }
+    );
 
-  const AdminPasswordData = {
-    password: passwordHash,
-    emailVerified: true,
-    salt: salt,
-    user: result._id,
-  };
-  await new AdminPassword(AdminPasswordData).save();
-
-  const settingData = [];
-
-  const settingsFiles = globSync('./src/setup/defaultSettings/**/*.json');
-
-  for (const filePath of settingsFiles) {
-    const file = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-
-    const settingsToUpdate = {
+    const settingsFiles = globSync('./src/setup/defaultSettings/**/*.json');
+    const overrides = {
       idurar_app_email: email,
       idurar_app_company_email: email,
       idurar_app_timezone: timezone,
@@ -71,31 +60,54 @@ const setup = async (req, res) => {
       idurar_app_language: language || 'en_us',
     };
 
-    const newSettings = file.map((x) => {
-      const settingValue = settingsToUpdate[x.settingKey];
-      return settingValue ? { ...x, settingValue } : { ...x };
+    for (const filePath of settingsFiles) {
+      const rows = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      for (const row of rows) {
+        const settingValue = overrides[row.settingKey] ?? row.settingValue;
+        const isNumeric = row.valueType === 'Number' || typeof settingValue === 'number';
+        await models.Setting.findOrCreate({
+          where: { settingKey: row.settingKey, settingCategory: row.settingCategory },
+          defaults: {
+            ...row,
+            settingValue,
+            integerValue: isNumeric ? parseInt(settingValue) : null,
+          },
+          transaction: t,
+        });
+      }
+    }
+
+    await models.Taxes.findOrCreate({
+      where: { taxName: 'Tax 0%' },
+      defaults: { taxName: 'Tax 0%', taxValue: 0, isDefault: true, enabled: true },
+      transaction: t,
     });
 
-    settingData.push(...newSettings);
+    await models.PaymentMode.findOrCreate({
+      where: { name: 'Default Payment' },
+      defaults: {
+        name: 'Default Payment',
+        description: 'Default Payment Mode (Cash , Wire Transfert)',
+        isDefault: true,
+        enabled: true,
+      },
+      transaction: t,
+    });
+
+    await t.commit();
+    return res.status(200).json({
+      success: true,
+      result: {},
+      message: 'Successfully IDURAR App Setup',
+    });
+  } catch (err) {
+    await t.rollback();
+    return res.status(500).json({
+      success: false,
+      result: null,
+      message: err.message,
+    });
   }
-
-  await Setting.insertMany(settingData);
-
-  await Taxes.insertMany([{ taxName: 'Tax 0%', taxValue: '0', isDefault: true }]);
-
-  await PaymentMode.insertMany([
-    {
-      name: 'Default Payment',
-      description: 'Default Payment Mode (Cash , Wire Transfert)',
-      isDefault: true,
-    },
-  ]);
-
-  return res.status(200).json({
-    success: true,
-    result: {},
-    message: 'Successfully IDURAR App Setup',
-  });
 };
 
 module.exports = setup;

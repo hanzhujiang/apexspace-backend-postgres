@@ -1,21 +1,19 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Setting');
+const { models } = require('@/db');
 
 const readBySettingKey = async ({ settingKey }) => {
   try {
-    // Find document by id
+    // Find document by settingKey
 
     if (!settingKey) {
       return null;
     }
 
-    const result = await Model.findOne({ settingKey });
-    // If no results found, return document not found
+    const result = await models.Setting.findOne({ where: { settingKey } });
+    // If no results found, return null
     if (!result) {
       return null;
     } else {
-      // Return success resposne
+      // Return success response
       return result;
     }
   } catch {

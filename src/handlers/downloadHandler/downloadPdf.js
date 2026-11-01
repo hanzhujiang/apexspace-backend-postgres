@@ -1,13 +1,13 @@
 const custom = require('@/controllers/pdfController');
-const mongoose = require('mongoose');
+const { models } = require('@/db');
 const fs = require('fs');
 const path = require('path');
 
 module.exports = downloadPdf = async (req, res, { directory, id }) => {
   try {
     const modelName = directory.slice(0, 1).toUpperCase() + directory.slice(1);
-    
-    if (!mongoose.models[modelName]) {
+
+    if (!models[modelName]) {
       return res.status(404).json({
         success: false,
         result: null,
@@ -15,15 +15,14 @@ module.exports = downloadPdf = async (req, res, { directory, id }) => {
       });
     }
 
-    const Model = mongoose.model(modelName);
-    const result = await Model.findOne({ _id: id }).exec();
+    const Model = models[modelName];
+    const result = await Model.findOne({ where: { id } });
 
     if (!result) {
       throw { name: 'ValidationError' };
     }
 
-    // 生成 PDF 相关路径
-    const fileId = `${modelName.toLowerCase()}-${result._id}.pdf`;
+    const fileId = `${modelName.toLowerCase()}-${result.id}.pdf`;
     const folderPath = modelName.toLowerCase();
     const targetLocation = `src/public/download/${folderPath}/${fileId}`;
 

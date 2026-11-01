@@ -1,47 +1,40 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Invoice');
+const { models, Op } = require('@/db');
 
 const paginatedList = async (req, res) => {
-  const page = req.query.page || 1;
+  const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.items) || 10;
-  const skip = page * limit - limit;
+  const offset = page * limit - limit;
 
-  const { sortBy = 'enabled', sortValue = -1, filter, equal } = req.query;
+  const { sortBy = 'created', sortValue = -1, filter, equal } = req.query;
 
   const fieldsArray = req.query.fields ? req.query.fields.split(',') : [];
 
-  let fields;
+  const where = { removed: false };
 
-  fields = fieldsArray.length === 0 ? {} : { $or: [] };
-
-  for (const field of fieldsArray) {
-    fields.$or.push({ [field]: { $regex: new RegExp(req.query.q, 'i') } });
+  if (filter && equal !== undefined) {
+    where[filter] = equal;
   }
 
+  if (fieldsArray.length > 0) {
+    const q = req.query.q || '';
+    where[Op.or] = fieldsArray.map((field) => ({
+      [field]: { [Op.iLike]: `%${q}%` },
+    }));
+  }
+
+  const direction =
+    String(sortValue) === '-1' || String(sortValue).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+
   //  Query the database for a list of all results
-  const resultsPromise = Model.find({
-    removed: false,
-
-    [filter]: equal,
-    ...fields,
-  })
-    .skip(skip)
-    .limit(limit)
-    .sort({ [sortBy]: sortValue })
-    .populate('createdBy', 'name')
-    .exec();
-
-  // Counting the total documents
-  const countPromise = Model.countDocuments({
-    removed: false,
-
-    [filter]: equal,
-    ...fields,
+  const { rows: result, count } = await models.Invoice.findAndCountAll({
+    where,
+    include: [{ model: models.Admin, as: 'createdBy', attributes: ['id', 'name'] }],
+    offset,
+    limit,
+    order: [[sortBy, direction]],
+    distinct: true,
   });
 
-  // Resolving both promises
-  const [result, count] = await Promise.all([resultsPromise, countPromise]);
   // Calculating total pages
   const pages = Math.ceil(count / limit);
 

@@ -1,7 +1,5 @@
-const mongoose = require('mongoose');
+const { models, sequelize } = require('@/db');
 const moment = require('moment');
-
-const Model = mongoose.model('Invoice');
 
 const { loadSettings } = require('@/middlewares/settings');
 
@@ -30,129 +28,69 @@ const summary = async (req, res) => {
 
   const statuses = ['draft', 'pending', 'overdue', 'paid', 'unpaid', 'partially'];
 
-  const response = await Model.aggregate([
-    {
-      $match: {
-        removed: false,
-        // date: {
-        //   $gte: startDate.toDate(),
-        //   $lte: endDate.toDate(),
-        // },
-      },
-    },
-    {
-      $facet: {
-        totalInvoice: [
-          {
-            $group: {
-              _id: null,
-              total: {
-                $sum: '$total',
-              },
-              count: {
-                $sum: 1,
-              },
-            },
-          },
-          {
-            $project: {
-              _id: 0,
-              total: '$total',
-              count: '$count',
-            },
-          },
-        ],
-        statusCounts: [
-          {
-            $group: {
-              _id: '$status',
-              count: {
-                $sum: 1,
-              },
-            },
-          },
-          {
-            $project: {
-              _id: 0,
-              status: '$_id',
-              count: '$count',
-            },
-          },
-        ],
-        paymentStatusCounts: [
-          {
-            $group: {
-              _id: '$paymentStatus',
-              count: {
-                $sum: 1,
-              },
-            },
-          },
-          {
-            $project: {
-              _id: 0,
-              status: '$_id',
-              count: '$count',
-            },
-          },
-        ],
-        overdueCounts: [
-          {
-            $match: {
-              expiredDate: {
-                $lt: new Date(),
-              },
-            },
-          },
-          {
-            $group: {
-              _id: '$status',
-              count: {
-                $sum: 1,
-              },
-            },
-          },
-          {
-            $project: {
-              _id: 0,
-              status: '$_id',
-              count: '$count',
-            },
-          },
-        ],
-      },
-    },
-  ]);
+  // Aggregate counts/totals via Postgres GROUP BY. Postgres is case-sensitive
+  // for mixed-case columns so camelCase identifiers must be double-quoted.
+  const [totalsRow] = await sequelize.query(
+    `SELECT
+       COUNT(*)::int                     AS count,
+       COALESCE(SUM("total"), 0)::float  AS total
+     FROM invoices
+     WHERE removed = false`,
+    { type: sequelize.QueryTypes.SELECT }
+  );
+
+  const statusRows = await sequelize.query(
+    `SELECT status AS status, COUNT(*)::int AS count
+       FROM invoices
+      WHERE removed = false
+      GROUP BY status`,
+    { type: sequelize.QueryTypes.SELECT }
+  );
+
+  const paymentStatusRows = await sequelize.query(
+    `SELECT "paymentStatus" AS status, COUNT(*)::int AS count
+       FROM invoices
+      WHERE removed = false
+      GROUP BY "paymentStatus"`,
+    { type: sequelize.QueryTypes.SELECT }
+  );
+
+  const overdueRows = await sequelize.query(
+    `SELECT status AS status, COUNT(*)::int AS count
+       FROM invoices
+      WHERE removed = false
+        AND "expiredDate" < NOW()
+      GROUP BY status`,
+    { type: sequelize.QueryTypes.SELECT }
+  );
+
+  const totalCount = totalsRow ? Number(totalsRow.count) || 0 : 0;
+  const totalAmount = totalsRow ? Number(totalsRow.total) || 0 : 0;
+
+  const totalInvoices = { total: totalAmount, count: totalCount };
+
+  const safePercent = (count) =>
+    totalInvoices.count > 0 ? Math.round((count / totalInvoices.count) * 100) : 0;
+
+  const statusResultMap = statusRows.map((item) => ({
+    status: item.status,
+    count: Number(item.count),
+    percentage: safePercent(Number(item.count)),
+  }));
+
+  const paymentStatusResultMap = paymentStatusRows.map((item) => ({
+    status: item.status,
+    count: Number(item.count),
+    percentage: safePercent(Number(item.count)),
+  }));
+
+  const overdueResultMap = overdueRows.map((item) => ({
+    status: 'overdue',
+    count: Number(item.count),
+    percentage: safePercent(Number(item.count)),
+  }));
 
   let result = [];
-
-  const totalInvoices = response[0].totalInvoice ? response[0].totalInvoice[0] : 0;
-  const statusResult = response[0].statusCounts || [];
-  const paymentStatusResult = response[0].paymentStatusCounts || [];
-  const overdueResult = response[0].overdueCounts || [];
-
-  const statusResultMap = statusResult.map((item) => {
-    return {
-      ...item,
-      percentage: Math.round((item.count / totalInvoices.count) * 100),
-    };
-  });
-
-  const paymentStatusResultMap = paymentStatusResult.map((item) => {
-    return {
-      ...item,
-      percentage: Math.round((item.count / totalInvoices.count) * 100),
-    };
-  });
-
-  const overdueResultMap = overdueResult.map((item) => {
-    return {
-      ...item,
-      status: 'overdue',
-      percentage: Math.round((item.count / totalInvoices.count) * 100),
-    };
-  });
-
   statuses.forEach((status) => {
     const found = [...paymentStatusResultMap, ...statusResultMap, ...overdueResultMap].find(
       (item) => item.status === status
@@ -162,41 +100,17 @@ const summary = async (req, res) => {
     }
   });
 
-  const unpaid = await Model.aggregate([
-    {
-      $match: {
-        removed: false,
-
-        // date: {
-        //   $gte: startDate.toDate(),
-        //   $lte: endDate.toDate(),
-        // },
-        paymentStatus: {
-          $in: ['unpaid', 'partially'],
-        },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        total_amount: {
-          $sum: {
-            $subtract: ['$total', '$credit'],
-          },
-        },
-      },
-    },
-    {
-      $project: {
-        _id: 0,
-        total_amount: '$total_amount',
-      },
-    },
-  ]);
+  const [unpaidRow] = await sequelize.query(
+    `SELECT COALESCE(SUM("total" - "credit"), 0)::float AS total_amount
+       FROM invoices
+      WHERE removed = false
+        AND "paymentStatus" IN ('unpaid', 'partially')`,
+    { type: sequelize.QueryTypes.SELECT }
+  );
 
   const finalResult = {
     total: totalInvoices?.total,
-    total_undue: unpaid.length > 0 ? unpaid[0].total_amount : 0,
+    total_undue: unpaidRow ? Number(unpaidRow.total_amount) || 0 : 0,
     type,
     performance: result,
   };

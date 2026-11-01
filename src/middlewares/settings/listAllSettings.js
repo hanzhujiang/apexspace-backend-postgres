@@ -1,13 +1,11 @@
-const mongoose = require('mongoose');
-
-const Model = mongoose.model('Setting');
+const { models } = require('@/db');
 
 const listAllSettings = async () => {
   try {
     //  Query the database for a list of all results
-    const result = await Model.find({
-      removed: false,
-    }).exec();
+    const result = await models.Setting.findAll({
+      where: { removed: false },
+    });
 
     if (result.length > 0) {
       return result;

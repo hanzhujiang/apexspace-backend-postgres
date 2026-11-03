@@ -174,7 +174,7 @@ const koganUpload = async (req, res) => {
 
     let shippingPrice = 0;
     try {
-      shippingPrice = koganShippingPriceCalculator(sku, row.DeliveryPostCode, skuWeightMap);
+      shippingPrice = koganShippingPriceCalculator(sku, row.DeliveryPostCode, skuWeightMap, parseInt(row.Quantity, 10) || 1);
     } catch (err) {
       return res.status(400).json({ success: false, message: err.message });
     }

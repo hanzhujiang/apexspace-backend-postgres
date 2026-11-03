@@ -14,7 +14,7 @@ function postcodeInZone(postcode, postcodeStr) {
 }
 
 // skuWeightMap is optional; falls back to the static constant if not provided.
-function koganShippingPriceCalculator(sku, deliveryPostCode, skuWeightMap) {
+function koganShippingPriceCalculator(sku, deliveryPostCode, skuWeightMap, quantity = 1) {
   const weights = skuWeightMap || KOGAN_SKU_WEIGHTS;
   const weight = weights[sku];
   if (weight === undefined) {
@@ -26,9 +26,11 @@ function koganShippingPriceCalculator(sku, deliveryPostCode, skuWeightMap) {
     throw new Error(`Invalid postcode: ${deliveryPostCode}`);
   }
 
+  const qty = Number(quantity) || 1;
+
   for (const zone of KOGAN_SHIPPING_MATRIX) {
     if (postcodeInZone(postcode, zone.postcodes)) {
-      const price = weight * zone.perKiloCharge + zone.baseCharge;
+      const price = weight * zone.perKiloCharge * qty + zone.baseCharge;
       return Math.round(price * 100) / 100;
     }
   }

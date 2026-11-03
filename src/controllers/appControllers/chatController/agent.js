@@ -3,14 +3,22 @@ const { createReactAgent } = require('@langchain/langgraph/prebuilt');
 const { HumanMessage, AIMessage, SystemMessage } = require('@langchain/core/messages');
 const { getSalesSummary, getTopSKUs } = require('./tools');
 
-const llm = new ChatAnthropic({
-  model: 'claude-opus-4-7',
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
 const tools = [getSalesSummary, getTopSKUs];
 
-const agent = createReactAgent({ llm, tools });
+let agent;
+function getAgent() {
+  if (!agent) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not set');
+    }
+    const llm = new ChatAnthropic({
+      model: 'claude-opus-4-7',
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+    agent = createReactAgent({ llm, tools });
+  }
+  return agent;
+}
 
 const SYSTEM_PROMPT = `You are a helpful CRM sales assistant with access to live sales data from the Sales collection.
 
@@ -32,7 +40,7 @@ async function runChat(message, history = []) {
 
   messages.push(new HumanMessage(message));
 
-  const result = await agent.invoke({ messages });
+  const result = await getAgent().invoke({ messages });
 
   const lastMessage = result.messages[result.messages.length - 1];
   return lastMessage.content;

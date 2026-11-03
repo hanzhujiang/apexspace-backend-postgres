@@ -17,7 +17,7 @@ async function start() {
     console.log('PostgreSQL connection established.');
 
     // Sync schema (alter: true is safe for iterative dev; use migrations for production)
-    await syncDatabase({ alter: process.env.NODE_ENV !== 'production' });
+    await syncDatabase({ alter: process.env.NODE_ENV === 'development' });
 
     const app = require('./app');
     app.set('port', process.env.PORT || 8888);
@@ -25,7 +25,7 @@ async function start() {
       console.log(`Express running → PORT ${server.address().port}`);
     });
   } catch (error) {
-    console.error('Failed to start server:', error.message);
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 }

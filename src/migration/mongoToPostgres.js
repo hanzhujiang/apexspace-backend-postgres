@@ -22,15 +22,15 @@ require('module-alias/register');
 require('dotenv').config({ path: '.env' });
 require('dotenv').config({ path: '.env.local' });
 
-const { MongoClient } = require('mongodb');
-const { sequelize, models, syncDatabase } = require('@/db');
+const { MongoClient } = require('mongodb'); //MongoDB native driver
+const { sequelize, models, syncDatabase } = require('@/db'); // Sequelize + models
 
 // Default DB name on the staging cluster is `test` (no path on the URI).
 // Override with MONGO_DB env var if migrating from a different db name.
 const MONGO_DB = process.env.MONGO_DB || 'test';
 
 const idMap = {};
-const mapId  = (m, mongoId, sqlId) => { if (mongoId) idMap[`${m}:${mongoId.toString()}`] = sqlId; };
+const mapId = (m, mongoId, sqlId) => { if (mongoId) idMap[`${m}:${mongoId.toString()}`] = sqlId; };
 const getSqlId = (m, mongoId) => mongoId ? (idMap[`${m}:${mongoId.toString()}`] ?? null) : null;
 
 let db; // set in run()
@@ -39,11 +39,13 @@ const col = (name) => db.collection(name);
 async function migrateAdmins() {
   const docs = await col('admins').find({}).toArray();
   for (const d of docs) {
-    const [r] = await models.Admin.findOrCreate({ where: { email: d.email }, defaults: {
-      removed: d.removed ?? false, enabled: d.enabled ?? false,
-      email: d.email, name: d.name, surname: d.surname, photo: d.photo,
-      role: d.role ?? 'owner', created: d.created,
-    }});
+    const [r] = await models.Admin.findOrCreate({
+      where: { email: d.email }, defaults: {
+        removed: d.removed ?? false, enabled: d.enabled ?? false,
+        email: d.email, name: d.name, surname: d.surname, photo: d.photo,
+        role: d.role ?? 'owner', created: d.created,
+      }
+    });
     mapId('Admin', d._id, r.id);
   }
   console.log(`  ✓ Admins (${docs.length})`);
@@ -54,11 +56,13 @@ async function migrateAdminPasswords() {
   for (const d of docs) {
     const adminId = getSqlId('Admin', d.user);
     if (!adminId) continue;
-    const [r] = await models.AdminPassword.findOrCreate({ where: { admin_id: adminId }, defaults: {
-      removed: d.removed ?? false, password: d.password, salt: d.salt,
-      emailToken: d.emailToken, resetToken: d.resetToken,
-      emailVerified: d.emailVerified ?? false, authType: d.authType ?? 'email',
-    }});
+    const [r] = await models.AdminPassword.findOrCreate({
+      where: { admin_id: adminId }, defaults: {
+        removed: d.removed ?? false, password: d.password, salt: d.salt,
+        emailToken: d.emailToken, resetToken: d.resetToken,
+        emailVerified: d.emailVerified ?? false, authType: d.authType ?? 'email',
+      }
+    });
     mapId('AdminPassword', d._id, r.id);
     if (Array.isArray(d.loggedSessions) && d.loggedSessions.length) {
       await models.AdminSession.bulkCreate(
@@ -107,7 +111,7 @@ async function migrateClients() {
         name: d.name, phone: d.phone, country: d.country, address: d.address, zipCode: d.zipCode,
         email: d.email, website: d.website, currency: d.currency, language: d.language, notes: d.notes,
         createdBy_id: getSqlId('Admin', d.createdBy),
-        assigned_id:  getSqlId('Admin', d.assigned),
+        assigned_id: getSqlId('Admin', d.assigned),
         created: d.created, updated: d.updated,
       },
     });
@@ -165,7 +169,7 @@ async function migrateWarehouseAndInventory() {
 
     // Mongo stock/on_the_way are plain objects via the native driver (not Maps).
     const stockEntries = Object.entries(d.stock || {});
-    const onTheWayMap  = d.on_the_way || {};
+    const onTheWayMap = d.on_the_way || {};
     if (stockEntries.length) {
       await models.InventoryWarehouseStock.bulkCreate(
         stockEntries.map(([wId, stock]) => ({
@@ -380,7 +384,8 @@ async function migrateUploads() {
 
 async function run() {
   console.log('\nConnecting to MongoDB...');
-  const mongoClient = new MongoClient(process.env.DATABASE);
+  const mongoClient = new MongoClient('mongodb://mongo:UEEBkGyYsAGzLYrLnTmfaKobVZcIAhTH@altaria.proxy.rlwy.net:43047');
+  console.log('connected to mongo');
   await mongoClient.connect();
   db = mongoClient.db(MONGO_DB);
   console.log(`Source database: ${MONGO_DB}`);

@@ -326,6 +326,25 @@ const ProductCosts = sequelize.define('ProductCosts', {
   updated:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'product_costs' });
 
+const Case = sequelize.define('Case', {
+  id:                 { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed:            { type: DataTypes.BOOLEAN, defaultValue: false },
+  status:             { type: DataTypes.ENUM('Open','Closed'), defaultValue: 'Open' },
+  order_no:           DataTypes.STRING,
+  platform:           DataTypes.STRING,
+  sku:                DataTypes.STRING,
+  product_name:       DataTypes.STRING,
+  quantity:           { type: DataTypes.INTEGER, defaultValue: 0 },
+  warehouse_location: DataTypes.STRING,
+  description:        DataTypes.TEXT,
+  resolution:         DataTypes.STRING,
+  refund_amount:      { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
+  resend_quantity:    { type: DataTypes.INTEGER, defaultValue: 0 },
+  return_quantity:    { type: DataTypes.INTEGER, defaultValue: 0 },
+  created:            { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated:            { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+}, { tableName: 'cases' });
+
 const KoganSkuWeight = sequelize.define('KoganSkuWeight', {
   id:      { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   removed: { type: DataTypes.BOOLEAN, defaultValue: false },
@@ -368,6 +387,10 @@ Payment.belongsTo(PaymentMode, { foreignKey: 'paymentMode_id', as: 'paymentMode'
 Sales.belongsTo(Client, { foreignKey: 'client_id',    as: 'client'    });
 Sales.belongsTo(Admin,  { foreignKey: 'createdBy_id', as: 'createdBy' });
 
+Case.belongsTo(Client, { foreignKey: 'client_id',    as: 'client'    });
+Case.belongsTo(Sales,  { foreignKey: 'sales_id',     as: 'sales'     });
+Case.belongsTo(Admin,  { foreignKey: 'createdBy_id', as: 'createdBy' });
+
 Inventory.hasMany(InventoryWarehouseStock, { foreignKey: 'inventory_id', as: 'warehouseStock' });
 InventoryWarehouseStock.belongsTo(Inventory, { foreignKey: 'inventory_id' });
 
@@ -381,6 +404,7 @@ const models = {
   Payment,
   Warehouse, Inventory, InventoryWarehouseStock,
   Sales, ProductCosts, KoganSkuWeight,
+  Case,
 };
 
 // Frontend (toblo-frontend-next) was written against the Mongoose shape and

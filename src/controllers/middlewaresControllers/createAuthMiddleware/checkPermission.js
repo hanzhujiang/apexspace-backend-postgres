@@ -8,6 +8,7 @@ const ENTITY_TO_PERMISSION = {
   paymentmode:    'paymentMode',
   taxes:          'taxes',
   sales:          'sales',
+  case:           'sales',
   inventory:      'inventory',
   warehouse:      'warehouse',
   productcosts:   'productCosts',

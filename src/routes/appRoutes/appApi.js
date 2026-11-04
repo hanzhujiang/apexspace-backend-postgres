@@ -37,6 +37,12 @@ router.route('/sales/recent-chart').get(catchErrors(salesCtrl['recentChart']));
 router.route('/sales/top-skus').get(catchErrors(salesCtrl['topSkus']));
 router.route('/sales/employee-performance').get(catchErrors(salesCtrl['employeePerformance']));
 
+// Custom case resolution routes
+const caseCtrl = appControllers['caseController'];
+router.route('/case/resend/:id').post(catchErrors(caseCtrl['resend']));
+router.route('/case/return/:id').post(catchErrors(caseCtrl['return']));
+router.route('/case/refund/:id').post(catchErrors(caseCtrl['refund']));
+
 // Custom inventory routes
 const inventoryCtrl = appControllers['inventoryController'];
 router.route('/inventory/arrived/:id').patch(catchErrors(inventoryCtrl['arrived']));

@@ -9,6 +9,7 @@
  */
 
 const appModelsList = [
+  'Case',
   'Client',
   'Inventory',
   'Invoice',

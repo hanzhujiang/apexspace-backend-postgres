@@ -3,6 +3,23 @@ const { models } = require('@/db');
 const fs = require('fs');
 const path = require('path');
 
+// Pug templates in src/pdf reference associations (model.client, model.items, …)
+// that are not auto-loaded by Sequelize, so each PDF-capable model needs an
+// explicit include list to avoid "Cannot read properties of undefined" at render time.
+const pdfIncludes = {
+  Invoice: () => [
+    { model: models.Client, as: 'client' },
+    { model: models.InvoiceItem, as: 'items' },
+  ],
+  Quote: () => [
+    { model: models.Client, as: 'client' },
+    { model: models.QuoteItem, as: 'items' },
+  ],
+  Payment: () => [
+    { model: models.Client, as: 'client' },
+  ],
+};
+
 module.exports = downloadPdf = async (req, res, { directory, id }) => {
   try {
     const modelName = directory.slice(0, 1).toUpperCase() + directory.slice(1);
@@ -16,7 +33,8 @@ module.exports = downloadPdf = async (req, res, { directory, id }) => {
     }
 
     const Model = models[modelName];
-    const result = await Model.findOne({ where: { id } });
+    const include = pdfIncludes[modelName] ? pdfIncludes[modelName]() : undefined;
+    const result = await Model.findOne({ where: { id }, include });
 
     if (!result) {
       throw { name: 'ValidationError' };
@@ -24,24 +42,27 @@ module.exports = downloadPdf = async (req, res, { directory, id }) => {
 
     const fileId = `${modelName.toLowerCase()}-${result.id}.pdf`;
     const folderPath = modelName.toLowerCase();
-    const targetLocation = `src/public/download/${folderPath}/${fileId}`;
+    const targetLocation = path.resolve(
+      process.cwd(),
+      'src/public/download',
+      folderPath,
+      fileId
+    );
 
-    // 确保目录存在
     const folderDir = path.dirname(targetLocation);
     if (!fs.existsSync(folderDir)) {
       fs.mkdirSync(folderDir, { recursive: true });
     }
 
-    // 生成 PDF
     await custom.generatePdf(
       modelName,
       { filename: folderPath, format: 'A4', targetLocation },
       result
     );
 
-    // 发送文件
     return res.download(targetLocation, (error) => {
-      if (error) {
+      if (error && !res.headersSent) {
+        console.error('[downloadPdf] res.download failed', error);
         return res.status(500).json({
           success: false,
           result: null,
@@ -52,6 +73,7 @@ module.exports = downloadPdf = async (req, res, { directory, id }) => {
     });
 
   } catch (error) {
+    console.error('[downloadPdf] handler error', error);
     if (error.name === 'ValidationError') {
       return res.status(400).json({
         success: false,

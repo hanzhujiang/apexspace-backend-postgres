@@ -24,13 +24,16 @@ const convertQuoteToInvoice = async (req, res) => {
         throw err;
       }
 
-      // Compute next invoice number via Setting counter (same pattern as invoiceController)
+      // Next invoice number is derived from the actual DB max for the year,
+      // not from last_invoice_number (which can drift and cause unique-constraint collisions).
       const year = new Date().getFullYear();
-      const lastNumberSetting = await models.Setting.findOne({
-        where: { settingKey: 'last_invoice_number' },
+      const maxRow = await models.Invoice.findOne({
+        where: { year },
+        attributes: [[sequelize.fn('MAX', sequelize.col('number')), 'maxNumber']],
+        raw: true,
         transaction: t,
       });
-      const nextNumber = (lastNumberSetting?.integerValue || 0) + 1;
+      const nextNumber = (Number(maxRow?.maxNumber) || 0) + 1;
 
       const newInvoice = await models.Invoice.create(
         {

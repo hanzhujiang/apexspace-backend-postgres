@@ -23,9 +23,10 @@ const create = async (req, res) => {
   taxTotal = calculate.multiply(subTotal, taxRate / 100);
   total = calculate.add(subTotal, taxTotal);
 
+  const requestedYear = Number(body.year) || new Date().getFullYear();
+
   const quoteFields = {
-    number: body.number,
-    year: body.year,
+    year: requestedYear,
     content: body.content,
     recurring: body.recurring,
     date: body.date,
@@ -46,6 +47,16 @@ const create = async (req, res) => {
   };
 
   const result = await sequelize.transaction(async (t) => {
+    // Next quote number comes from the DB (MAX for the year +1), not from
+    // last_quote_number which can drift and violate the (number, year) unique index.
+    const maxRow = await models.Quote.findOne({
+      where: { year: requestedYear },
+      attributes: [[sequelize.fn('MAX', sequelize.col('number')), 'maxNumber']],
+      raw: true,
+      transaction: t,
+    });
+    quoteFields.number = (Number(maxRow?.maxNumber) || 0) + 1;
+
     const quote = await models.Quote.create(quoteFields, { transaction: t });
 
     if (items.length > 0) {

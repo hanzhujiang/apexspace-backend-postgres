@@ -55,6 +55,18 @@ const create = async (req, res) => {
   delete invoicePayload.items;
 
   const result = await sequelize.transaction(async (t) => {
+    // Derive (number, year) authoritatively from the DB to avoid drift with the
+    // last_invoice_number setting the frontend uses to suggest a default.
+    const year = Number(invoicePayload.year) || new Date().getFullYear();
+    const maxRow = await models.Invoice.findOne({
+      where: { year },
+      attributes: [[sequelize.fn('MAX', sequelize.col('number')), 'maxNumber']],
+      raw: true,
+      transaction: t,
+    });
+    invoicePayload.year = year;
+    invoicePayload.number = (Number(maxRow?.maxNumber) || 0) + 1;
+
     const invoice = await models.Invoice.create(invoicePayload, { transaction: t });
     await invoice.update({ pdf: 'invoice-' + invoice.id + '.pdf' }, { transaction: t });
 

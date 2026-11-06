@@ -77,8 +77,13 @@ exports.generatePdf = async (
 
       settings.public_server_file = process.env.PUBLIC_SERVER_FILE;
 
+      // Serialize Sequelize instance to a plain object so Pug sees associations
+      // as regular nested objects/arrays (toJSON walks children, including the
+      // Mongo-id injection), instead of lazy getters that can surprise templates.
+      const modelData = typeof result?.toJSON === 'function' ? result.toJSON() : result;
+
       const htmlContent = pug.renderFile('src/pdf/' + modelName + '.pug', {
-        model: result,
+        model: modelData,
         settings,
         translate,
         dateFormat,
@@ -90,7 +95,11 @@ exports.generatePdf = async (
       const page = await browser.newPage();
 
       try {
-        await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+        // `networkidle0` waits for 500ms of no network activity, which never
+        // resolves when the template references assets (e.g. the favicon link)
+        // that puppeteer tries to fetch under about:blank. The template has no
+        // dynamic content, so DOMContentLoaded is sufficient.
+        await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
         await page.pdf({
           path: targetLocation,
           format: info.format,
@@ -104,6 +113,9 @@ exports.generatePdf = async (
       if (callback) callback();
     }
   } catch (error) {
-    throw new Error(error);
+    console.error('[generatePdf] failed for', modelName, error);
+    // Preserve the original error (stack + message) instead of stringifying it
+    // through `new Error(error)`, so callers can see where it actually broke.
+    throw error;
   }
 };

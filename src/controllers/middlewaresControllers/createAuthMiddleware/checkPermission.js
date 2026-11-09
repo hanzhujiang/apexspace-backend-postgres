@@ -15,6 +15,7 @@ const ENTITY_TO_PERMISSION = {
   setting:        'settings',
   koganskuweight: 'shopSettings',
   chat:           'salesAssistant',
+  releasenote:    'releaseNotes',
 };
 
 const checkPermission = async (req, res, next) => {

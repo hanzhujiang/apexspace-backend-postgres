@@ -18,9 +18,11 @@ const DEFAULT_PERMISSIONS = {
   toolings:       true,
   inventory:      true,
   warehouse:      true,
+  products:       true,
   productCosts:   true,
   settings:       false,
   salesAssistant: true,
+  dashboardStaleSkus: true,
 };
 
 async function setupDb() {

@@ -1,5 +1,7 @@
 const { models, Op, sequelize } = require('@/db');
 const createCRUDController = require('@/controllers/middlewaresControllers/createCRUDController');
+const moment = require('moment-timezone');
+const { startOfDayUtc, endOfDayUtc } = require('@/utils/dateTime');
 
 // Overlay point-in-time cost_aud onto each sales row from ProductCosts (SKU + date window).
 // Does NOT mutate the sales table.
@@ -31,7 +33,16 @@ async function enrichWithSkuCosts(sales) {
       )
       .sort((a, b) => new Date(b.date_from) - new Date(a.date_from))[0];
 
-    plain.cost_aud = match ? match.cost : null;
+    // Prefer ProductCosts overlay (point-in-time). Fall back to the sale's
+    // stored cost_aud (set at import time by koganUpload etc.) so rows without
+    // a matching ProductCosts window still show the imported cost instead of
+    // blanking out. 0 is treated as "unknown" and shown as blank.
+    if (match) {
+      plain.cost_aud = match.cost;
+    } else {
+      const stored = Number(plain.cost_aud);
+      plain.cost_aud = stored > 0 ? stored : null;
+    }
     return plain;
   });
 }
@@ -67,8 +78,8 @@ async function salesList(Model, req, res) {
   }
   if (req.query.date_from || req.query.date_to) {
     const dateRange = {};
-    if (req.query.date_from) dateRange[Op.gte] = new Date(req.query.date_from);
-    if (req.query.date_to) dateRange[Op.lte] = new Date(req.query.date_to);
+    if (req.query.date_from) dateRange[Op.gte] = startOfDayUtc(req.query.date_from, req.userTz);
+    if (req.query.date_to)   dateRange[Op.lte] = endOfDayUtc(req.query.date_to, req.userTz);
     andClauses.push({ date: dateRange });
   }
 
@@ -162,8 +173,9 @@ function modelController() {
 
     const { sku, warehouse_location, quantity } = body;
 
-    // cost_aud is not stored — computed from ProductCosts on every read
-    delete body.cost_aud;
+    // cost_aud: ProductCosts overlays this value at read time when a matching
+    // SKU+date window exists; otherwise the stored value is shown. We keep
+    // whatever the client sent (or 0 default) so manual sales can carry cost.
     // Strip Mongoose-style foreign key names if client sent them
     if (body.client && !body.client_id) {
       body.client_id = body.client;
@@ -227,22 +239,19 @@ function modelController() {
 
   methods.recentChart = async (req, res) => {
     const days = Math.min(parseInt(req.query.days) || 7, 90);
-    const tz = (() => {
-      try {
-        const t = req.query.timezone || 'UTC';
-        Intl.DateTimeFormat(undefined, { timeZone: t });
-        return t;
-      } catch {
-        return 'UTC';
-      }
-    })();
+    const tz = req.userTz || 'UTC';
     const now = new Date();
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
     const PLATFORMS = ['MyDeal', 'Amazon', 'Kogan', 'Bunnings', 'Shopify'];
 
+    // `sales.date` is TIMESTAMP WITH TIME ZONE. A single `AT TIME ZONE :tz`
+    // converts the stored UTC instant to the user's wall clock (naive). The
+    // older code chained `AT TIME ZONE 'UTC' AT TIME ZONE :tz` which is only
+    // correct for naive timestamps — on timestamptz it offsets the result by
+    // the zone and drops rows onto the wrong calendar day.
     const sql = `
-      SELECT TO_CHAR((date AT TIME ZONE 'UTC') AT TIME ZONE :tz, 'YYYY-MM-DD') AS day,
+      SELECT TO_CHAR(date AT TIME ZONE :tz, 'YYYY-MM-DD') AS day,
              platform,
              SUM(quantity)::int AS qty
       FROM sales
@@ -318,17 +327,49 @@ function modelController() {
     return res.status(200).json({ success: true, result });
   };
 
+  methods.staleSkus = async (req, res) => {
+    const days = Math.min(parseInt(req.query.days) || 30, 365);
+    const showAll = req.query.all === 'true' || req.query.all === '1';
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const limitClause = showAll ? '' : 'LIMIT 20';
+    const sql = `
+      SELECT i.sku,
+             i.stock_all::int AS "stockAll",
+             (
+               SELECT MIN(s.product_name)
+               FROM sales s
+               WHERE s.sku = i.sku AND s.removed = false AND s.product_name IS NOT NULL
+             ) AS product_name
+      FROM inventories i
+      WHERE i.removed = false
+        AND i.stock_all > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM sales s
+          WHERE s.sku = i.sku
+            AND s.removed = false
+            AND s.date >= :from
+        )
+      ORDER BY "stockAll" DESC, i.sku ASC
+      ${limitClause}
+    `;
+
+    const result = await sequelize.query(sql, {
+      replacements: { from },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    return res.status(200).json({ success: true, result });
+  };
+
   methods.employeePerformance = async (req, res) => {
-    const now = new Date();
-
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-
-    const weekStart = new Date(todayStart);
-    const dow = weekStart.getDay();
-    weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1)); // Monday
-
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Day/week/month boundaries are anchored in the acting user's timezone so
+    // "today" and "this month" always match what they see on the client.
+    const tz = req.userTz || 'UTC';
+    const nowLocal = moment.tz(tz);
+    const todayStart = nowLocal.clone().startOf('day').utc().toDate();
+    const weekStart  = nowLocal.clone().startOf('isoWeek').utc().toDate(); // Monday
+    const monthStart = nowLocal.clone().startOf('month').utc().toDate();
 
     const sql = `
       SELECT a.id,

@@ -1,5 +1,6 @@
 const { models, sequelize } = require('@/db');
 const { increaseBySettingKey } = require('@/middlewares/settings');
+const { currentYear } = require('@/utils/dateTime');
 
 const convertQuoteToInvoice = async (req, res) => {
   const quoteId = req.params.id;
@@ -26,7 +27,7 @@ const convertQuoteToInvoice = async (req, res) => {
 
       // Next invoice number is derived from the actual DB max for the year,
       // not from last_invoice_number (which can drift and cause unique-constraint collisions).
-      const year = new Date().getFullYear();
+      const year = currentYear(req.userTz);
       const maxRow = await models.Invoice.findOne({
         where: { year },
         attributes: [[sequelize.fn('MAX', sequelize.col('number')), 'maxNumber']],

@@ -2,6 +2,7 @@ const { models, sequelize } = require('@/db');
 
 const { calculate } = require('@/helpers');
 const { increaseBySettingKey } = require('@/middlewares/settings');
+const { currentYear } = require('@/utils/dateTime');
 const schema = require('./schemaValidate');
 
 const create = async (req, res) => {
@@ -57,7 +58,7 @@ const create = async (req, res) => {
   const result = await sequelize.transaction(async (t) => {
     // Derive (number, year) authoritatively from the DB to avoid drift with the
     // last_invoice_number setting the frontend uses to suggest a default.
-    const year = Number(invoicePayload.year) || new Date().getFullYear();
+    const year = Number(invoicePayload.year) || currentYear(req.userTz);
     const maxRow = await models.Invoice.findOne({
       where: { year },
       attributes: [[sequelize.fn('MAX', sequelize.col('number')), 'maxNumber']],

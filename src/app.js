@@ -10,6 +10,7 @@ const corePublicRouter = require('./routes/coreRoutes/corePublicRouter');
 const adminAuth = require('./controllers/coreControllers/adminAuth');
 const errorHandlers = require('./handlers/errorHandlers');
 const erpApiRouter = require('./routes/appRoutes/appApi');
+const userTimezone = require('./middlewares/userTimezone');
 
 const fileUpload = require('express-fileupload');
 const app = express();
@@ -20,7 +21,7 @@ app.use(
             callback(null, true); // 允许所有来源
         },
         methods: "GET,POST,PUT,DELETE,OPTIONS,PATCH",
-        allowedHeaders: "Content-Type,Authorization",
+        allowedHeaders: "Content-Type,Authorization,X-User-Timezone",
         credentials: true, // 允许前端携带 cookies 或认证信息
     })
 );
@@ -33,8 +34,8 @@ app.use(compression());
 
 
 app.use('/api', coreAuthRouter);
-app.use('/api', adminAuth.isValidAuthToken, coreApiRouter);
-app.use('/api', adminAuth.isValidAuthToken, adminAuth.checkPermission, erpApiRouter);
+app.use('/api', adminAuth.isValidAuthToken, userTimezone, coreApiRouter);
+app.use('/api', adminAuth.isValidAuthToken, userTimezone, adminAuth.checkPermission, erpApiRouter);
 app.use('/download', coreDownloadRouter);
 app.use('/public', corePublicRouter);
 

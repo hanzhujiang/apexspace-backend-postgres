@@ -8,6 +8,9 @@ const commonOptions = {
   logging: process.env.NODE_ENV === 'development' ? console.log : false,
   pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
   define: { timestamps: false },
+  // Store/read all DATE (timestamp) columns in UTC regardless of server env.
+  // DATEONLY columns are tz-naive strings and are unaffected.
+  timezone: '+00:00',
   dialectOptions: process.env.PGSSL === 'require'
     ? { ssl: { require: true, rejectUnauthorized: false } }
     : undefined,
@@ -345,6 +348,37 @@ const Case = sequelize.define('Case', {
   updated:            { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'cases' });
 
+const Product = sequelize.define('Product', {
+  id:                 { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed:            { type: DataTypes.BOOLEAN, defaultValue: false },
+  product_name:       { type: DataTypes.STRING, allowNull: false },
+  image_link:         DataTypes.STRING,
+  sku:                { type: DataTypes.STRING, allowNull: false },
+  description:        DataTypes.TEXT,
+  package_weight:     DataTypes.DECIMAL(10, 3),
+  package_length:     DataTypes.DECIMAL(10, 2),
+  package_width:      DataTypes.DECIMAL(10, 2),
+  package_height:     DataTypes.DECIMAL(10, 2),
+  container_40_qty:   DataTypes.INTEGER,
+  procurement_price:  DataTypes.DECIMAL(12, 2),
+  factory:            DataTypes.STRING,
+  factory_address:    DataTypes.STRING,
+  notes:              DataTypes.TEXT,
+  created:            { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated:            { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+}, { tableName: 'products', indexes: [{ fields: ['sku'] }] });
+
+const ReleaseNote = sequelize.define('ReleaseNote', {
+  id:      { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  version: { type: DataTypes.STRING, allowNull: false },
+  date:    { type: DataTypes.DATEONLY, allowNull: false },
+  title:   { type: DataTypes.STRING, allowNull: false },
+  body:    DataTypes.TEXT,
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+}, { tableName: 'release_notes' });
+
 const KoganSkuWeight = sequelize.define('KoganSkuWeight', {
   id:      { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   removed: { type: DataTypes.BOOLEAN, defaultValue: false },
@@ -405,6 +439,8 @@ const models = {
   Warehouse, Inventory, InventoryWarehouseStock,
   Sales, ProductCosts, KoganSkuWeight,
   Case,
+  Product,
+  ReleaseNote,
 };
 
 // Frontend (toblo-frontend-next) was written against the Mongoose shape and

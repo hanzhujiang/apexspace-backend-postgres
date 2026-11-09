@@ -1,5 +1,6 @@
 const { models } = require('@/db');
 const createCRUDController = require('@/controllers/middlewaresControllers/createCRUDController');
+const { toCalendarDate, dayBefore } = require('@/utils/dateTime');
 
 function modelController() {
   const Model = models.ProductCosts;
@@ -10,19 +11,17 @@ function modelController() {
     const { sku, date_from } = req.body;
 
     if (sku && date_from) {
-      const newDateFrom = new Date(date_from);
+      const newDateFrom = toCalendarDate(date_from, req.userTz);
 
-      // Close the current open-ended entry for this SKU
+      // Close the current open-ended entry for this SKU with the calendar
+      // day before the new entry starts (DATEONLY, no tz math).
       const openEntry = await Model.findOne({
         where: { sku, date_to: null, removed: false },
         order: [['date_from', 'DESC']],
       });
-      if (openEntry) {
-        const closeDate = new Date(newDateFrom);
-        closeDate.setDate(closeDate.getDate() - 1);
-        closeDate.setHours(23, 59, 59, 999);
+      if (openEntry && newDateFrom) {
         await Model.update(
-          { date_to: closeDate, updated: new Date() },
+          { date_to: dayBefore(newDateFrom), updated: new Date() },
           { where: { id: openEntry.id } }
         );
       }

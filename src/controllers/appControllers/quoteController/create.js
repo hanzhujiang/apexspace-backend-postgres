@@ -2,6 +2,7 @@ const { models, sequelize } = require('@/db');
 
 const { calculate } = require('@/helpers');
 const { increaseBySettingKey } = require('@/middlewares/settings');
+const { currentYear } = require('@/utils/dateTime');
 
 const create = async (req, res) => {
   const body = req.body || {};
@@ -23,7 +24,7 @@ const create = async (req, res) => {
   taxTotal = calculate.multiply(subTotal, taxRate / 100);
   total = calculate.add(subTotal, taxTotal);
 
-  const requestedYear = Number(body.year) || new Date().getFullYear();
+  const requestedYear = Number(body.year) || currentYear(req.userTz);
 
   const quoteFields = {
     year: requestedYear,

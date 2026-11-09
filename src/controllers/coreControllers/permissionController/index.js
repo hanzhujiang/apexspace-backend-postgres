@@ -13,11 +13,13 @@ const DEFAULT_PERMISSIONS = {
   toolings:       true,
   inventory:      true,
   warehouse:      true,
+  products:       true,
   productCosts:   true,
   settings:       false,
   shopSettings:   false,
   userSessions:   false,
   salesAssistant: true,
+  releaseNotes:   true,
   // Dashboard card-level
   dashboardSummaryInvoices:     true,
   dashboardSummaryQuote:        true,
@@ -28,6 +30,7 @@ const DEFAULT_PERMISSIONS = {
   dashboardCustomers:           true,
   dashboardRecentSales:         true,
   dashboardTopSkus:             true,
+  dashboardStaleSkus:           true,
   dashboardEmployeePerformance: true,
   // Shop Settings
   shopSettingsLoadDefaults:     false,

@@ -1,6 +1,7 @@
 {
   "name": "crm-backend-sql",
-  "version": "4.1.0",
+  "version": "0.1.0",
+  "private": true,
   "engines": {
     "npm": "10.2.4",
     "node": "20.9.0"
@@ -16,7 +17,9 @@
     "setup-db": "node src/setup/setupDb.js",
     "create-admin": "node src/setup/createAdmin.js",
     "db:sync": "node src/setup/syncDb.js",
-    "migrate:mongo-to-postgres": "node src/migration/mongoToPostgres.js"
+    "migrate:mongo-to-postgres": "node src/migration/mongoToPostgres.js",
+    "verify:datetime": "node scripts/verifyDateTime.js",
+    "audit:timezones": "node scripts/auditTimezones.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -41,6 +44,7 @@
     "lodash": "^4.17.21",
     "module-alias": "^2.2.3",
     "moment": "^2.30.1",
+    "moment-timezone": "^0.6.6",
     "multer": "^1.4.4",
     "node-cache": "^5.1.2",
     "openai": "^4.27.0",

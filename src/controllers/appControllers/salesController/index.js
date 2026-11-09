@@ -1,7 +1,7 @@
 const { models, Op, sequelize } = require('@/db');
 const createCRUDController = require('@/controllers/middlewaresControllers/createCRUDController');
 const moment = require('moment-timezone');
-const { startOfDayUtc, endOfDayUtc } = require('@/utils/dateTime');
+const { startOfDayUtc, endOfDayUtc, FALLBACK_TZ } = require('@/utils/dateTime');
 
 // Overlay point-in-time cost_aud onto each sales row from ProductCosts (SKU + date window).
 // Does NOT mutate the sales table.
@@ -239,7 +239,7 @@ function modelController() {
 
   methods.recentChart = async (req, res) => {
     const days = Math.min(parseInt(req.query.days) || 7, 90);
-    const tz = req.userTz || 'UTC';
+    const tz = req.userTz || FALLBACK_TZ;
     const now = new Date();
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
@@ -365,7 +365,7 @@ function modelController() {
   methods.employeePerformance = async (req, res) => {
     // Day/week/month boundaries are anchored in the acting user's timezone so
     // "today" and "this month" always match what they see on the client.
-    const tz = req.userTz || 'UTC';
+    const tz = req.userTz || FALLBACK_TZ;
     const nowLocal = moment.tz(tz);
     const todayStart = nowLocal.clone().startOf('day').utc().toDate();
     const weekStart  = nowLocal.clone().startOf('isoWeek').utc().toDate(); // Monday

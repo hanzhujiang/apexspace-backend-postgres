@@ -2,13 +2,13 @@
   {
     "settingCategory": "money_format_settings",
     "settingKey": "default_currency_code",
-    "settingValue": "USD",
+    "settingValue": "AUD",
     "valueType": "string"
   },
   {
     "settingCategory": "money_format_settings",
     "settingKey": "currency_name",
-    "settingValue": "US Dollars",
+    "settingValue": "Australian Dollars",
     "valueType": "string"
   },
   {

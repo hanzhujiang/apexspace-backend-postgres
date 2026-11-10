@@ -79,7 +79,7 @@ async function salesList(Model, req, res) {
   if (req.query.date_from || req.query.date_to) {
     const dateRange = {};
     if (req.query.date_from) dateRange[Op.gte] = startOfDayUtc(req.query.date_from, req.userTz);
-    if (req.query.date_to)   dateRange[Op.lte] = endOfDayUtc(req.query.date_to, req.userTz);
+    if (req.query.date_to) dateRange[Op.lte] = endOfDayUtc(req.query.date_to, req.userTz);
     andClauses.push({ date: dateRange });
   }
 
@@ -243,7 +243,12 @@ function modelController() {
     const now = new Date();
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
-    const PLATFORMS = ['MyDeal', 'Amazon', 'Kogan', 'Bunnings', 'Shopify'];
+    const platformRows = await models.Platform.findAll({
+      where: { removed: false, enabled: true },
+      order: [['sort_order', 'ASC'], ['id', 'ASC']],
+      attributes: ['name'],
+    });
+    const platforms = platformRows.map((p) => p.name);
 
     // `sales.date` is TIMESTAMP WITH TIME ZONE. A single `AT TIME ZONE :tz`
     // converts the stored UTC instant to the user's wall clock (naive). The
@@ -276,19 +281,19 @@ function modelController() {
     const dataMap = {};
     for (const date of dates) {
       dataMap[date] = {};
-      for (const p of PLATFORMS) dataMap[date][p] = 0;
+      for (const p of platforms) dataMap[date][p] = 0;
     }
     for (const row of raw) {
       const date = row.day;
       if (!dataMap[date]) continue;
-      const key = PLATFORMS.find((p) => p.toLowerCase() === (row.platform || '').toLowerCase());
+      const key = platforms.find((p) => p.toLowerCase() === (row.platform || '').toLowerCase());
       if (key) dataMap[date][key] += Number(row.qty) || 0;
     }
 
     const chartData = dates.map((date) => {
       const entry = { date: date.slice(5).replace('-', '/') }; // MM/DD
       let total = 0;
-      for (const p of PLATFORMS) {
+      for (const p of platforms) {
         entry[p] = dataMap[date][p];
         total += entry[p];
       }
@@ -296,7 +301,7 @@ function modelController() {
       return entry;
     });
 
-    return res.status(200).json({ success: true, result: { chartData, platforms: PLATFORMS } });
+    return res.status(200).json({ success: true, result: { chartData, platforms } });
   };
 
   methods.topSkus = async (req, res) => {
@@ -368,7 +373,7 @@ function modelController() {
     const tz = req.userTz || FALLBACK_TZ;
     const nowLocal = moment.tz(tz);
     const todayStart = nowLocal.clone().startOf('day').utc().toDate();
-    const weekStart  = nowLocal.clone().startOf('isoWeek').utc().toDate(); // Monday
+    const weekStart = nowLocal.clone().startOf('isoWeek').utc().toDate(); // Monday
     const monthStart = nowLocal.clone().startOf('month').utc().toDate();
 
     const sql = `

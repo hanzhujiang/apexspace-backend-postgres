@@ -379,6 +379,19 @@ const ReleaseNote = sequelize.define('ReleaseNote', {
   updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'release_notes' });
 
+const Platform = sequelize.define('Platform', {
+  id:         { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed:    { type: DataTypes.BOOLEAN, defaultValue: false },
+  enabled:    { type: DataTypes.BOOLEAN, defaultValue: true },
+  name:       { type: DataTypes.STRING, allowNull: false, unique: true },
+  fee_rate:   { type: DataTypes.DECIMAL(6, 4),  defaultValue: 1 },
+  fee_fixed:  { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  color:      DataTypes.STRING,
+  sort_order: { type: DataTypes.INTEGER, defaultValue: 0 },
+  created:    { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated:    { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+}, { tableName: 'platforms' });
+
 const KoganSkuWeight = sequelize.define('KoganSkuWeight', {
   id:      { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   removed: { type: DataTypes.BOOLEAN, defaultValue: false },
@@ -440,6 +453,7 @@ const models = {
   Sales, ProductCosts, KoganSkuWeight,
   Case,
   Product,
+  Platform,
   ReleaseNote,
 };
 

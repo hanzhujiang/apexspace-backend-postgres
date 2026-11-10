@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { models } = require('@/db');
 
 const authUser = async (req, res, { user, databasePassword }) => {
   const isMatch = await bcrypt.compare(databasePassword.salt + req.body.password, databasePassword.password);
@@ -17,6 +18,11 @@ const authUser = async (req, res, { user, databasePassword }) => {
   // Add session record (replaces $push loggedSessions)
   await databasePassword.createSession({ token });
 
+  const platforms = await models.Platform.findAll({
+    where: { removed: false, enabled: true },
+    order: [['sort_order', 'ASC'], ['id', 'ASC']],
+  });
+
   return res.status(200).json({
     success: true,
     result: {
@@ -28,6 +34,7 @@ const authUser = async (req, res, { user, databasePassword }) => {
       photo: user.photo,
       token,
       maxAge: req.body.remember ? 365 : null,
+      platforms,
     },
     message: 'Successfully login user',
   });

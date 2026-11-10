@@ -16,6 +16,7 @@ const appModelsList = [
   'KoganSkuWeight',
   'Payment',
   'PaymentMode',
+  'Platform',
   'Product',
   'ProductCosts',
   'Quote',

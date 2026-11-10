@@ -19,6 +19,13 @@ async function start() {
     // Sync schema (alter: true is safe for iterative dev; use migrations for production)
     await syncDatabase({ alter: process.env.NODE_ENV === 'development' });
 
+    // Seed core lookup data that must exist before the app accepts traffic.
+    const { seedPlatforms } = require('./setup/seedPlatforms');
+    const platformSeed = await seedPlatforms();
+    if (platformSeed.created > 0) {
+      console.log(`Seeded ${platformSeed.created} default platform(s)`);
+    }
+
     const app = require('./app');
     app.set('port', process.env.PORT || 8888);
     const server = app.listen(app.get('port'), () => {

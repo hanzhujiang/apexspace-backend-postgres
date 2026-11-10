@@ -5,6 +5,7 @@ const { globSync } = require('glob');
 const fs = require('fs');
 const { models, sequelize } = require('../db');
 const { NON_OWNER_ROLES } = require('../constants/roles');
+const { seedPlatforms } = require('./seedPlatforms');
 
 const DEFAULT_PERMISSIONS = {
   dashboard:      true,
@@ -85,6 +86,10 @@ async function setupDb() {
       },
     });
     console.log(pmCreated ? '✅ Default payment mode created' : '✅ Default payment mode already exists, skipped');
+
+    // ── Platforms ─────────────────────────────────────────────────────────────
+    const platformSeed = await seedPlatforms();
+    console.log(`✅ Platforms: ${platformSeed.created} inserted, ${platformSeed.total - platformSeed.created} already existed`);
 
     console.log('\n🥳 Database setup complete!');
     process.exit(0);

@@ -1,6 +1,6 @@
 {
-  "name": "crm-backend-sql",
-  "version": "0.1.0",
+  "name": "apexspace-backend-sql",
+  "version": "0.2.0",
   "private": true,
   "engines": {
     "npm": "10.2.4",

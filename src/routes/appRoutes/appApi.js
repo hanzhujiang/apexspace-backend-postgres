@@ -51,6 +51,11 @@ router.route('/inventory/update-ontheway/:id').patch(catchErrors(inventoryCtrl['
 
 router.post('/chat', catchErrors(chatController.chat));
 
+// Monthly P&L — custom aggregation endpoint + ads spend upsert.
+const monthlyPnlCtrl = appControllers['monthlyPnlController'];
+router.route('/monthly-pnl').get(catchErrors(monthlyPnlCtrl.getMonthly));
+router.route('/monthly-pnl/ads').patch(catchErrors(monthlyPnlCtrl.upsertAds));
+
 // Toolings routes
 const multer = require('multer');
 const koganUpload = require('@/controllers/appControllers/toolingsController/koganUpload');
@@ -58,5 +63,37 @@ const koganSeedWeights = require('@/controllers/appControllers/toolingsControlle
 const upload = multer({ storage: multer.memoryStorage() });
 router.post('/toolings/kogan-upload', upload.single('file'), catchErrors(koganUpload));
 router.post('/toolings/kogan-weights-seed', catchErrors(koganSeedWeights));
+
+// Product file upload (image + manual pdf) → stored in src/public/uploads/product/
+const path = require('path');
+const { slugify } = require('transliteration');
+const { models: _models } = require('@/db');
+const productDiskStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'src/public/uploads/product'),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const base = slugify(file.originalname.split('.')[0].toLowerCase()) || 'file';
+    const uid = Math.random().toString(36).slice(2, 7);
+    cb(null, `${base}-${uid}${ext}`);
+  },
+});
+const productFileFilter = (req, file, cb) => {
+  if (file.fieldname === 'image' && file.mimetype.startsWith('image/')) return cb(null, true);
+  if (file.fieldname === 'manual_pdf' && file.mimetype === 'application/pdf') return cb(null, true);
+  cb(new Error(`Invalid file type for field ${file.fieldname}: ${file.mimetype}`));
+};
+const productUpload = multer({ storage: productDiskStorage, fileFilter: productFileFilter }).fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'manual_pdf', maxCount: 1 },
+]);
+router.patch('/product/upload/:id', productUpload, catchErrors(async (req, res) => {
+  const product = await _models.Product.findOne({ where: { id: req.params.id, removed: false } });
+  if (!product) return res.status(404).json({ success: false, result: null, message: 'Product not found' });
+  const patch = {};
+  if (req.files?.image?.[0]) patch.image_link = `public/uploads/product/${req.files.image[0].filename}`;
+  if (req.files?.manual_pdf?.[0]) patch.manual_pdf_link = `public/uploads/product/${req.files.manual_pdf[0].filename}`;
+  if (Object.keys(patch).length) await product.update(patch);
+  return res.status(200).json({ success: true, result: product, message: 'Files uploaded' });
+}));
 
 module.exports = router;

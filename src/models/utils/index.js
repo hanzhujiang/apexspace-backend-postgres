@@ -9,11 +9,13 @@
  */
 
 const appModelsList = [
+  'AdsSpend',
   'Case',
   'Client',
   'Inventory',
   'Invoice',
   'KoganSkuWeight',
+  'MonthlySalesSummary',
   'Payment',
   'PaymentMode',
   'Platform',

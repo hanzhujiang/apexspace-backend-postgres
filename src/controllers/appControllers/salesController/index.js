@@ -2,6 +2,22 @@ const { models, Op, sequelize } = require('@/db');
 const createCRUDController = require('@/controllers/middlewaresControllers/createCRUDController');
 const moment = require('moment-timezone');
 const { startOfDayUtc, endOfDayUtc, FALLBACK_TZ } = require('@/utils/dateTime');
+const monthlyPnl = require('@/controllers/appControllers/monthlyPnlController');
+
+// Fire-and-await Monthly P&L recompute for each month touched by a sale
+// mutation. Uses `date || created` so sales without an explicit order date
+// still land in a month.
+async function refreshPnlForSales(...dates) {
+  const keys = new Set();
+  for (const d of dates) {
+    const key = monthlyPnl.monthKeyFromDate(d);
+    if (key) keys.add(`${key.year}-${key.month}`);
+  }
+  for (const k of keys) {
+    const [y, m] = k.split('-').map(Number);
+    await monthlyPnl.recomputeMonthlyPnl(y, m);
+  }
+}
 
 // Overlay point-in-time cost_aud onto each sales row from ProductCosts (SKU + date window).
 // Does NOT mutate the sales table.
@@ -76,6 +92,9 @@ async function salesList(Model, req, res) {
   if (req.query.filter && req.query.equal !== undefined) {
     andClauses.push({ [req.query.filter]: req.query.equal });
   }
+  if (req.query.unfulfilled === 'true') {
+    andClauses.push({ [Op.or]: [{ shipping_no: null }, { shipping_no: '' }] });
+  }
   if (req.query.date_from || req.query.date_to) {
     const dateRange = {};
     if (req.query.date_from) dateRange[Op.gte] = startOfDayUtc(req.query.date_from, req.userTz);
@@ -96,7 +115,7 @@ async function salesList(Model, req, res) {
     include: defaultInclude,
     offset,
     limit,
-    order: [['shipping_no', 'ASC'], ['date', 'DESC']],
+    order: [[sequelize.literal('"Sales"."date" DESC NULLS LAST')], ['id', 'DESC']],
     distinct: true,
   });
 
@@ -205,6 +224,8 @@ function modelController() {
         return created;
       });
 
+      await refreshPnlForSales(result.date || result.created);
+
       return res.status(200).json({
         success: true,
         result,
@@ -216,6 +237,36 @@ function modelController() {
       }
       throw err;
     }
+  };
+
+  // Wrap the default CRUD update / delete to trigger a P&L recompute after
+  // each successful write. For update, we fetch the row's pre-change date so
+  // we can refresh both the old and new month when the date moves.
+  const baseUpdate = methods.update;
+  methods.update = async (req, res) => {
+    const before = await Model.findOne({
+      where: { id: req.params.id },
+      attributes: ['id', 'date'],
+      raw: true,
+    });
+    await baseUpdate(req, res);
+    const after = await Model.findOne({
+      where: { id: req.params.id },
+      attributes: ['id', 'date'],
+      raw: true,
+    });
+    await refreshPnlForSales(before?.date, after?.date);
+  };
+
+  const baseDelete = methods.delete;
+  methods.delete = async (req, res) => {
+    const before = await Model.findOne({
+      where: { id: req.params.id },
+      attributes: ['id', 'date'],
+      raw: true,
+    });
+    await baseDelete(req, res);
+    await refreshPnlForSales(before?.date);
   };
 
   methods.list = (req, res) => salesList(Model, req, res);

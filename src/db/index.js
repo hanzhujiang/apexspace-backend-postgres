@@ -353,6 +353,7 @@ const Product = sequelize.define('Product', {
   removed:            { type: DataTypes.BOOLEAN, defaultValue: false },
   product_name:       { type: DataTypes.STRING, allowNull: false },
   image_link:         DataTypes.STRING,
+  manual_pdf_link:    DataTypes.STRING,
   sku:                { type: DataTypes.STRING, allowNull: false },
   description:        DataTypes.TEXT,
   package_weight:     DataTypes.DECIMAL(10, 3),
@@ -380,17 +381,60 @@ const ReleaseNote = sequelize.define('ReleaseNote', {
 }, { tableName: 'release_notes' });
 
 const Platform = sequelize.define('Platform', {
-  id:         { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:    { type: DataTypes.BOOLEAN, defaultValue: false },
-  enabled:    { type: DataTypes.BOOLEAN, defaultValue: true },
-  name:       { type: DataTypes.STRING, allowNull: false, unique: true },
-  fee_rate:   { type: DataTypes.DECIMAL(6, 4),  defaultValue: 1 },
-  fee_fixed:  { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
-  color:      DataTypes.STRING,
-  sort_order: { type: DataTypes.INTEGER, defaultValue: 0 },
-  created:    { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:    { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  id:           { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed:      { type: DataTypes.BOOLEAN, defaultValue: false },
+  enabled:      { type: DataTypes.BOOLEAN, defaultValue: true },
+  name:         { type: DataTypes.STRING, allowNull: false, unique: true },
+  fee_rate:     { type: DataTypes.DECIMAL(6, 4),  defaultValue: 1 },
+  fee_fixed:    { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  monthly_fee:  { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  color:        DataTypes.STRING,
+  sort_order:   { type: DataTypes.INTEGER, defaultValue: 0 },
+  created:      { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated:      { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'platforms' });
+
+// Monthly ads spend. `platform_id = null` is the per-month "Total" (the single
+// editable number the Monthly P&L card writes to). Future: per-platform rows.
+const AdsSpend = sequelize.define('AdsSpend', {
+  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed:     { type: DataTypes.BOOLEAN, defaultValue: false },
+  year:        { type: DataTypes.INTEGER, allowNull: false },
+  month:       { type: DataTypes.INTEGER, allowNull: false },
+  platform_id: { type: DataTypes.INTEGER, allowNull: true },
+  amount:      { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  created:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+}, {
+  tableName: 'ads_spend',
+  indexes: [{ unique: true, fields: ['year', 'month', 'platform_id'] }],
+});
+
+// Historical snapshot of the computed monthly P&L. Upserted whenever
+// GET /monthly-pnl is called for a (year, month) so we retain a trail.
+const MonthlySalesSummary = sequelize.define('MonthlySalesSummary', {
+  id:             { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  year:           { type: DataTypes.INTEGER, allowNull: false },
+  month:          { type: DataTypes.INTEGER, allowNull: false },
+  revenue:        { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  cost_of_goods:  { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  shipping_cost:  { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  gross_profit:   { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  gross_margin:   { type: DataTypes.DECIMAL(6, 4),  defaultValue: 0 },
+  ads_cost:       { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  platform_fees:  { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  labor_cost:     { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  warehouse_cost: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  loss:           { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  tax:            { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  net_profit:     { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  net_margin:     { type: DataTypes.DECIMAL(6, 4),  defaultValue: 0 },
+  created:        { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated:        { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+}, {
+  tableName: 'monthly_sales_summary',
+  indexes: [{ unique: true, fields: ['year', 'month'] }],
+});
 
 const KoganSkuWeight = sequelize.define('KoganSkuWeight', {
   id:      { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -455,6 +499,8 @@ const models = {
   Product,
   Platform,
   ReleaseNote,
+  AdsSpend,
+  MonthlySalesSummary,
 };
 
 // Frontend (toblo-frontend-next) was written against the Mongoose shape and

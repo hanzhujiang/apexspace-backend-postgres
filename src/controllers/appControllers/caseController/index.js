@@ -1,5 +1,21 @@
 const { models, Op, sequelize } = require('@/db');
 const createCRUDController = require('@/controllers/middlewaresControllers/createCRUDController');
+const monthlyPnl = require('@/controllers/appControllers/monthlyPnlController');
+
+// Case resolution feeds the P&L "loss" bucket (refund + resend/return * cost).
+// Loss is bucketed by case.updated, so every resolution write refreshes the
+// summary for that month.
+async function refreshPnlForCase(...dates) {
+  const keys = new Set();
+  for (const d of dates) {
+    const key = monthlyPnl.monthKeyFromDate(d);
+    if (key) keys.add(`${key.year}-${key.month}`);
+  }
+  for (const k of keys) {
+    const [y, m] = k.split('-').map(Number);
+    await monthlyPnl.recomputeMonthlyPnl(y, m);
+  }
+}
 
 async function resolveStockEntry(sku, warehouseNickName, transaction) {
   if (!sku || !warehouseNickName) return null;
@@ -69,6 +85,7 @@ function modelController() {
 
     const created = await Model.create(body);
     const full = await Model.findByPk(created.id, { include: defaultInclude });
+    await refreshPnlForCase(created.updated || created.created);
     return res.status(200).json({ success: true, result: full, message: 'Successfully Created' });
   };
 
@@ -81,9 +98,11 @@ function modelController() {
     delete body.client;
     delete body.sales;
 
+    const before = await Model.findByPk(req.params.id, { attributes: ['id', 'updated'], raw: true });
     const [count] = await Model.update(body, { where: { id: req.params.id, removed: false } });
     if (!count) return res.status(404).json({ success: false, result: null, message: 'No document found' });
     const result = await Model.findByPk(req.params.id, { include: defaultInclude });
+    await refreshPnlForCase(before?.updated, body.updated);
     return res.status(200).json({ success: true, result, message: 'Updated' });
   };
 
@@ -182,6 +201,7 @@ function modelController() {
 
     if (res.headersSent) return;
     const result = await Model.findByPk(id, { include: defaultInclude });
+    await refreshPnlForCase(result?.updated);
     return res.status(200).json({ success: true, result, message: 'Resend recorded' });
   };
 
@@ -226,6 +246,7 @@ function modelController() {
 
     if (res.headersSent) return;
     const result = await Model.findByPk(id, { include: defaultInclude });
+    await refreshPnlForCase(result?.updated);
     return res.status(200).json({ success: true, result, message: 'Return recorded' });
   };
 
@@ -247,7 +268,15 @@ function modelController() {
     });
 
     const result = await Model.findByPk(id, { include: defaultInclude });
+    await refreshPnlForCase(result?.updated);
     return res.status(200).json({ success: true, result, message: 'Refund recorded' });
+  };
+
+  const baseDelete = methods.delete;
+  methods.delete = async (req, res) => {
+    const before = await Model.findByPk(req.params.id, { attributes: ['id', 'updated'], raw: true });
+    await baseDelete(req, res);
+    await refreshPnlForCase(before?.updated);
   };
 
   return methods;

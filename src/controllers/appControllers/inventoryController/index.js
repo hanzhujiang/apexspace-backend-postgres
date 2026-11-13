@@ -1,4 +1,4 @@
-const { models, sequelize } = require('@/db');
+const { models, sequelize, Op } = require('@/db');
 const createCRUDController = require('@/controllers/middlewaresControllers/createCRUDController');
 
 // Convert an Inventory row (with warehouseStock association) into a plain object
@@ -138,8 +138,17 @@ function modelController() {
     const offset = (page - 1) * limit;
     const { sortBy = 'id', sortValue = -1 } = req.query;
 
+    const where = { removed: false };
+    const fieldsArray = req.query.fields ? String(req.query.fields).split(',') : [];
+    const q = req.query.q ? String(req.query.q).trim() : '';
+    if (fieldsArray.length > 0 && q) {
+      where[Op.or] = fieldsArray.map((field) => ({
+        [field]: { [Op.iLike]: `%${q}%` },
+      }));
+    }
+
     const { rows, count } = await Inventory.findAndCountAll({
-      where: { removed: false },
+      where,
       include: [{ model: InventoryWarehouseStock, as: 'warehouseStock' }],
       offset,
       limit,

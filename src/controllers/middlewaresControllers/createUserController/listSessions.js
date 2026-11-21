@@ -7,10 +7,14 @@ const listSessions = async (userModel, req, res) => {
   const now = new Date();
   const threeDaysAgo = new Date(now.getTime() - THREE_DAYS_MS);
 
-  const sessions = await models.UserSession.findAll({
-    where: { lastActiveAt: { [Op.gte]: threeDaysAgo } },
-    raw: true,
-  });
+  // Optional `?client=web|app` filter. When omitted, all clients are included.
+  const clientFilter = req.query && req.query.client;
+  const where = { lastActiveAt: { [Op.gte]: threeDaysAgo } };
+  if (clientFilter === 'web' || clientFilter === 'app') {
+    where.client = clientFilter;
+  }
+
+  const sessions = await models.UserSession.findAll({ where, raw: true });
 
   const byAdmin = new Map();
   for (const s of sessions) {

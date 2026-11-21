@@ -4,19 +4,25 @@ const { models, Op } = require('@/db');
 
 const IDLE_SPLIT_MS = 15 * 60 * 1000; // 15min idle gap → new session row
 
+function resolveClient(req) {
+  const raw = req.get && req.get('x-client');
+  return raw && String(raw).toLowerCase() === 'app' ? 'app' : 'web';
+}
+
 // Audit-trail touch: bump lastActiveAt or start a new session row on idle.
 // Fire-and-forget — never block the request.
 async function touchUserSession(token, adminId, req) {
   try {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const client = resolveClient(req);
     const now = new Date();
     const session = await models.UserSession.findOne({
-      where: { tokenHash, endedAt: null },
+      where: { tokenHash, client, endedAt: null },
       order: [['lastActiveAt', 'DESC']],
     });
     if (!session) {
       await models.UserSession.create({
-        admin_id: adminId, startedAt: now, lastActiveAt: now, tokenHash,
+        admin_id: adminId, startedAt: now, lastActiveAt: now, tokenHash, client,
         ipAddress: req.ip, userAgent: req.get && req.get('user-agent'),
       });
       return;
@@ -24,7 +30,7 @@ async function touchUserSession(token, adminId, req) {
     if (now - new Date(session.lastActiveAt).getTime() > IDLE_SPLIT_MS) {
       await session.update({ endedAt: session.lastActiveAt });
       await models.UserSession.create({
-        admin_id: session.admin_id, startedAt: now, lastActiveAt: now, tokenHash,
+        admin_id: session.admin_id, startedAt: now, lastActiveAt: now, tokenHash, client,
         ipAddress: req.ip, userAgent: req.get && req.get('user-agent'),
       });
     } else {

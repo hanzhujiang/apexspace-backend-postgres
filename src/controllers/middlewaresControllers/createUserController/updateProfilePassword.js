@@ -7,18 +7,47 @@ const updateProfilePassword = async (userModel, req, res) => {
 
   const reqUserName = userModel.toLowerCase();
   const userProfile = req[reqUserName];
-  const { password, passwordCheck } = req.body;
+  const { currentPassword, password } = req.body;
 
-  if (!password || !passwordCheck)
-    return res.status(400).json({ msg: 'Not all fields have been entered.' });
-
-  if (password.length < 8)
+  if (!currentPassword || !password) {
     return res.status(400).json({
-      msg: 'The password needs to be at least 8 characters long.',
+      success: false,
+      result: null,
+      message: 'Current and new password are required.',
     });
+  }
 
-  if (password !== passwordCheck)
-    return res.status(400).json({ msg: 'Enter the same password twice for verification.' });
+  if (password.length < 8) {
+    return res.status(400).json({
+      success: false,
+      result: null,
+      message: 'The new password needs to be at least 8 characters long.',
+    });
+  }
+
+  const passwordRecord = await PasswordModel.findOne({
+    where: { admin_id: userProfile.id, removed: false },
+  });
+
+  if (!passwordRecord) {
+    return res.status(404).json({
+      success: false,
+      result: null,
+      message: 'Password record not found.',
+    });
+  }
+
+  const isMatch = await bcrypt.compare(
+    passwordRecord.salt + currentPassword,
+    passwordRecord.password
+  );
+  if (!isMatch) {
+    return res.status(401).json({
+      success: false,
+      result: null,
+      message: 'Current password is incorrect.',
+    });
+  }
 
   const salt = uniqueId();
   const passwordHash = bcrypt.hashSync(salt + password);
@@ -29,7 +58,7 @@ const updateProfilePassword = async (userModel, req, res) => {
   );
 
   if (count === 0) {
-    return res.status(403).json({
+    return res.status(500).json({
       success: false,
       result: null,
       message: "User Password couldn't save correctly",
@@ -39,7 +68,7 @@ const updateProfilePassword = async (userModel, req, res) => {
   return res.status(200).json({
     success: true,
     result: {},
-    message: 'we update the password by this id: ' + userProfile.id,
+    message: 'Password updated successfully.',
   });
 };
 

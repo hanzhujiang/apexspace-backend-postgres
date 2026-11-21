@@ -21,7 +21,7 @@ app.use(
             callback(null, true); // 允许所有来源
         },
         methods: "GET,POST,PUT,DELETE,OPTIONS,PATCH",
-        allowedHeaders: "Content-Type,Authorization,X-User-Timezone",
+        allowedHeaders: "Content-Type,Authorization,X-User-Timezone,X-Client",
         credentials: true, // 允许前端携带 cookies 或认证信息
     })
 );

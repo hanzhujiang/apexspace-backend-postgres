@@ -19,6 +19,7 @@ const ENTITY_TO_PERMISSION = {
   adsspend:             'monthlyPnl',
   monthlysalessummary:  'monthlyPnl',
   'monthly-pnl':        'monthlyPnl',
+  financialreport:      'financialReports',
 };
 
 const checkPermission = async (req, res, next) => {

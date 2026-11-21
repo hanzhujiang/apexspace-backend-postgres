@@ -96,4 +96,33 @@ router.patch('/product/upload/:id', productUpload, catchErrors(async (req, res) 
   return res.status(200).json({ success: true, result: product, message: 'Files uploaded' });
 }));
 
+// Financial Report file upload (multiple receipts/invoices per row).
+const fs = require('fs');
+const financialDir = 'src/public/uploads/financial-report';
+fs.mkdirSync(financialDir, { recursive: true });
+const financialReportCtrl = appControllers['financialReportController'];
+const financialStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, financialDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const base = slugify(file.originalname.split('.')[0].toLowerCase()) || 'file';
+    const uid = Math.random().toString(36).slice(2, 7);
+    cb(null, `${base}-${uid}${ext}`);
+  },
+});
+const financialUpload = multer({ storage: financialStorage }).array('files', 20);
+
+router.patch('/financialreport/upload/:id', financialUpload, catchErrors(async (req, res) => {
+  const row = await _models.FinancialReport.findOne({ where: { id: req.params.id, removed: false } });
+  if (!row) return res.status(404).json({ success: false, result: null, message: 'Report not found' });
+  await financialReportCtrl.attachUploadedFiles(row.id, req.files || []);
+  const full = await _models.FinancialReport.findByPk(row.id, {
+    include: [{ model: _models.FinancialReportFile, as: 'files', required: false, where: { removed: false } }],
+  });
+  return res.status(200).json({ success: true, result: full, message: 'Files uploaded' });
+}));
+
+router.delete('/financialreport/file/:id/:fileId', catchErrors(financialReportCtrl.deleteFile));
+router.get('/financialreport/export', catchErrors(financialReportCtrl.exportCsv));
+
 module.exports = router;

@@ -1,5 +1,5 @@
 const { models, Op } = require('@/db');
-const { NON_OWNER_ROLES } = require('../../../constants/roles');
+const { NON_OWNER_ROLES, ROLES } = require('../../../constants/roles');
 
 const DEFAULT_PERMISSIONS = {
   dashboard:      true,
@@ -20,6 +20,7 @@ const DEFAULT_PERMISSIONS = {
   userSessions:   false,
   salesAssistant: true,
   releaseNotes:   true,
+  financialReports: true,
   // Dashboard card-level
   dashboardSummaryInvoices:     true,
   dashboardSummaryQuote:        true,
@@ -37,13 +38,24 @@ const DEFAULT_PERMISSIONS = {
   shopSettingsDelete:           false,
 };
 
+// Financial role: only Financial Reports is accessible by default. Every other
+// permission key is explicitly false so the merge below cannot silently grant
+// access to future keys added to DEFAULT_PERMISSIONS.
+const FINANCIAL_DEFAULT_PERMISSIONS = Object.fromEntries(
+  Object.keys(DEFAULT_PERMISSIONS).map((k) => [k, false])
+);
+FINANCIAL_DEFAULT_PERMISSIONS.financialReports = true;
+
+const defaultsFor = (role) =>
+  role === ROLES.FINANCIAL ? FINANCIAL_DEFAULT_PERMISSIONS : DEFAULT_PERMISSIONS;
+
 const list = async (req, res) => {
   // Seed any missing role rows with defaults
   await Promise.all(
     NON_OWNER_ROLES.map((role) =>
       models.Permission.findOrCreate({
         where: { role },
-        defaults: { permissions: DEFAULT_PERMISSIONS },
+        defaults: { permissions: defaultsFor(role) },
       })
     )
   );
@@ -54,7 +66,7 @@ const list = async (req, res) => {
   });
   const result = docs.map((doc) => ({
     ...doc.toJSON(),
-    permissions: { ...DEFAULT_PERMISSIONS, ...doc.permissions },
+    permissions: { ...defaultsFor(doc.role), ...doc.permissions },
   }));
 
   return res.status(200).json({
@@ -113,12 +125,12 @@ const listMy = async (req, res) => {
 
   const [rolePermission] = await models.Permission.findOrCreate({
     where: { role: user.role },
-    defaults: { permissions: DEFAULT_PERMISSIONS },
+    defaults: { permissions: defaultsFor(user.role) },
   });
 
   const merged = {
     ...rolePermission.toJSON(),
-    permissions: { ...DEFAULT_PERMISSIONS, ...rolePermission.permissions },
+    permissions: { ...defaultsFor(user.role), ...rolePermission.permissions },
   };
 
   return res.status(200).json({

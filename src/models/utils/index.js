@@ -12,6 +12,7 @@ const appModelsList = [
   'AdsSpend',
   'Case',
   'Client',
+  'FinancialReport',
   'Inventory',
   'Invoice',
   'KoganSkuWeight',

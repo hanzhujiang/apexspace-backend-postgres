@@ -5,6 +5,7 @@ const ROLES = {
   EMPLOYEE:    'employee',
   CREATE_ONLY: 'create_only',
   READ_ONLY:   'read_only',
+  FINANCIAL:   'financial',
 };
 
 const ALL_ROLES = Object.values(ROLES);

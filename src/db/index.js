@@ -39,7 +39,7 @@ const Admin = sequelize.define('Admin', {
   name:     { type: DataTypes.STRING, allowNull: false },
   surname:  DataTypes.STRING,
   photo:    DataTypes.STRING,
-  role:     { type: DataTypes.ENUM('owner','admin','manager','employee','create_only','read_only'), defaultValue: 'owner' },
+  role:     { type: DataTypes.ENUM('owner','admin','manager','employee','create_only','read_only','financial'), defaultValue: 'owner' },
   created:  { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'admins' });
 
@@ -72,6 +72,9 @@ const UserSession = sequelize.define('UserSession', {
   tokenHash:    DataTypes.STRING(128),
   ipAddress:    DataTypes.STRING,
   userAgent:    DataTypes.TEXT,
+  // 'web' for browser requests, 'app' for the mobile app. Set from the
+  // X-Client request header; defaults to 'web' when absent.
+  client:       { type: DataTypes.ENUM('web', 'app'), allowNull: false, defaultValue: 'web' },
 }, {
   tableName: 'user_sessions',
   indexes: [
@@ -79,12 +82,13 @@ const UserSession = sequelize.define('UserSession', {
     { fields: ['tokenHash'] },
     { fields: ['lastActiveAt'] },
     { fields: ['admin_id', 'lastActiveAt'] },
+    { fields: ['client'] },
   ],
 });
 
 const Permission = sequelize.define('Permission', {
   id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  role:        { type: DataTypes.ENUM('admin','manager','employee','create_only','read_only'), allowNull: false, unique: true },
+  role:        { type: DataTypes.ENUM('admin','manager','employee','create_only','read_only','financial'), allowNull: false, unique: true },
   permissions: { type: DataTypes.JSONB, defaultValue: {} },
 }, { tableName: 'permissions' });
 
@@ -436,6 +440,35 @@ const MonthlySalesSummary = sequelize.define('MonthlySalesSummary', {
   indexes: [{ unique: true, fields: ['year', 'month'] }],
 });
 
+const FinancialReport = sequelize.define('FinancialReport', {
+  id:        { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed:   { type: DataTypes.BOOLEAN, defaultValue: false },
+  company:   { type: DataTypes.STRING, allowNull: false },
+  date:      { type: DataTypes.DATEONLY, allowNull: false },
+  amount:    { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  currency:  { type: DataTypes.ENUM('AUD', 'CNY'), defaultValue: 'AUD' },
+  item:      DataTypes.STRING,
+  remarks:   DataTypes.TEXT,
+  created:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+}, {
+  tableName: 'financial_reports',
+  indexes: [
+    { fields: ['company'] },
+    { fields: ['date'] },
+  ],
+});
+
+const FinancialReportFile = sequelize.define('FinancialReportFile', {
+  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed:     { type: DataTypes.BOOLEAN, defaultValue: false },
+  fileId:      DataTypes.STRING,
+  name:        DataTypes.STRING,
+  path:        DataTypes.STRING,
+  description: DataTypes.TEXT,
+  isPublic:    { type: DataTypes.BOOLEAN, defaultValue: true },
+}, { tableName: 'financial_report_files' });
+
 const KoganSkuWeight = sequelize.define('KoganSkuWeight', {
   id:      { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   removed: { type: DataTypes.BOOLEAN, defaultValue: false },
@@ -485,6 +518,9 @@ Case.belongsTo(Admin,  { foreignKey: 'createdBy_id', as: 'createdBy' });
 Inventory.hasMany(InventoryWarehouseStock, { foreignKey: 'inventory_id', as: 'warehouseStock' });
 InventoryWarehouseStock.belongsTo(Inventory, { foreignKey: 'inventory_id' });
 
+FinancialReport.hasMany(FinancialReportFile, { foreignKey: 'financial_report_id', as: 'files' });
+FinancialReportFile.belongsTo(FinancialReport, { foreignKey: 'financial_report_id' });
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 const models = {
@@ -501,6 +537,8 @@ const models = {
   ReleaseNote,
   AdsSpend,
   MonthlySalesSummary,
+  FinancialReport,
+  FinancialReportFile,
 };
 
 // Frontend (toblo-frontend-next) was written against the Mongoose shape and
@@ -532,7 +570,26 @@ for (const name of Object.keys(models)) {
   };
 }
 
+// Postgres ENUM additions cannot be performed by sequelize.sync on existing
+// tables, so apply them with raw SQL before sync. Safe no-op on a fresh DB
+// where the TYPE does not yet exist (ADD VALUE IF NOT EXISTS catches that
+// via the surrounding try/catch).
+async function ensureEnumValues() {
+  const additions = [
+    { type: 'enum_admins_role',      value: 'financial' },
+    { type: 'enum_permissions_role', value: 'financial' },
+  ];
+  for (const { type, value } of additions) {
+    try {
+      await sequelize.query(`ALTER TYPE "${type}" ADD VALUE IF NOT EXISTS '${value}';`);
+    } catch (err) {
+      // TYPE may not exist yet on first boot; sync will create it with all values.
+    }
+  }
+}
+
 async function syncDatabase({ alter = false, force = false } = {}) {
+  await ensureEnumValues();
   await sequelize.sync({ alter, force });
   console.log('PostgreSQL schema synced');
 }

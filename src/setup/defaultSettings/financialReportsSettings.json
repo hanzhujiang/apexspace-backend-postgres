@@ -1,0 +1,12 @@
+[
+  {
+    "settingCategory": "financial_reports",
+    "settingKey": "financial_reports_companies",
+    "settingValue": [
+      "TechHub",
+      "DakkaCN",
+      "DakkaAU"
+    ],
+    "valueType": "array"
+  }
+]

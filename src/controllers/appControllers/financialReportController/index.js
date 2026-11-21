@@ -1,4 +1,4 @@
-const { models, Op } = require('@/db');
+const { sequelize, models, Op } = require('@/db');
 
 const defaultInclude = () => [
   { model: models.FinancialReportFile, as: 'files', required: false, where: { removed: false } },
@@ -102,6 +102,26 @@ const listAll = async (req, res) => {
   return res.status(200).json({ success: true, result, message: 'Found' });
 };
 
+// Per-company running total across all months, grouped by currency.
+// Deliberately ignores year/month — the balance is company-scoped, not
+// filter-scoped, so switching the month picker leaves it unchanged.
+const balance = async (req, res) => {
+  const where = { removed: false };
+  if (req.query.company) where.company = req.query.company;
+  const rows = await models.FinancialReport.findAll({
+    where,
+    attributes: [
+      'currency',
+      [sequelize.fn('SUM', sequelize.col('amount')), 'total'],
+    ],
+    group: ['currency'],
+    raw: true,
+  });
+  const result = { AUD: 0, CNY: 0 };
+  rows.forEach((r) => { result[r.currency] = Number(r.total) || 0; });
+  return res.status(200).json({ success: true, result, message: 'Found' });
+};
+
 const search = async (_req, res) => res.status(200).json({ success: true, result: [], message: 'Not supported' });
 const filter = async (_req, res) => res.status(200).json({ success: true, result: [], message: 'Not supported' });
 const summary = async (_req, res) => res.status(200).json({ success: true, result: { countFilter: 0, countAllDocs: 0 }, message: 'Not supported' });
@@ -192,4 +212,5 @@ module.exports = {
   attachUploadedFiles,
   deleteFile,
   exportCsv,
+  balance,
 };

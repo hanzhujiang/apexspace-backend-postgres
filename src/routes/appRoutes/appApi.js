@@ -124,5 +124,6 @@ router.patch('/financialreport/upload/:id', financialUpload, catchErrors(async (
 
 router.delete('/financialreport/file/:id/:fileId', catchErrors(financialReportCtrl.deleteFile));
 router.get('/financialreport/export', catchErrors(financialReportCtrl.exportCsv));
+router.get('/financialreport/balance', catchErrors(financialReportCtrl.balance));
 
 module.exports = router;

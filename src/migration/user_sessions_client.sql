@@ -15,4 +15,4 @@ $$;
 ALTER TABLE user_sessions
   ADD COLUMN IF NOT EXISTS client enum_user_sessions_client NOT NULL DEFAULT 'web';
 
-CREATE INDEX IF NOT EXISTS user_sessions_client_idx ON user_sessions (client);
+CREATE INDEX IF NOT EXISTS user_sessions_client ON user_sessions (client);

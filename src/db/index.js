@@ -588,8 +588,30 @@ async function ensureEnumValues() {
   }
 }
 
+// Pre-sync raw DDL for changes that sequelize.sync can't reliably perform on
+// existing tables (notably adding new ENUM columns). All statements are
+// idempotent — safe to run on every boot.
+async function ensureSchemaPatches() {
+  // user_sessions.client — added after the table shipped. sync({alter:true})
+  // creates the ENUM type but skips the column, then fails on its index.
+  await sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_user_sessions_client') THEN
+        CREATE TYPE enum_user_sessions_client AS ENUM ('web', 'app');
+      END IF;
+    END
+    $$;
+  `);
+  await sequelize.query(`
+    ALTER TABLE user_sessions
+      ADD COLUMN IF NOT EXISTS client enum_user_sessions_client NOT NULL DEFAULT 'web';
+  `);
+}
+
 async function syncDatabase({ alter = false, force = false } = {}) {
   await ensureEnumValues();
+  await ensureSchemaPatches();
   await sequelize.sync({ alter, force });
   console.log('PostgreSQL schema synced');
 }

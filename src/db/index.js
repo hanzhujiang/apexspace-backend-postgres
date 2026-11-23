@@ -19,62 +19,62 @@ const commonOptions = {
 const sequelize = process.env.DATABASE_URL
   ? new Sequelize(process.env.DATABASE_URL, commonOptions)
   : new Sequelize(
-      process.env.POSTGRES_DATABASE || 'apexspace_crm',
-      process.env.POSTGRES_USER || 'postgres',
-      process.env.POSTGRES_PASSWORD || '',
-      {
-        ...commonOptions,
-        host: process.env.POSTGRES_HOST || 'localhost',
-        port: parseInt(process.env.POSTGRES_PORT || '5432'),
-      }
-    );
+    process.env.POSTGRES_DATABASE || 'apexspace_crm',
+    process.env.POSTGRES_USER || 'postgres',
+    process.env.POSTGRES_PASSWORD || '',
+    {
+      ...commonOptions,
+      host: process.env.POSTGRES_HOST || 'localhost',
+      port: parseInt(process.env.POSTGRES_PORT || '5432'),
+    }
+  );
 
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 const Admin = sequelize.define('Admin', {
-  id:       { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:  { type: DataTypes.BOOLEAN, defaultValue: false },
-  enabled:  { type: DataTypes.BOOLEAN, defaultValue: false },
-  email:    { type: DataTypes.STRING, allowNull: false, unique: true },
-  name:     { type: DataTypes.STRING, allowNull: false },
-  surname:  DataTypes.STRING,
-  photo:    DataTypes.STRING,
-  role:     { type: DataTypes.ENUM('owner','admin','manager','employee','create_only','read_only','financial'), defaultValue: 'owner' },
-  created:  { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  enabled: { type: DataTypes.BOOLEAN, defaultValue: false },
+  email: { type: DataTypes.STRING, allowNull: false, unique: true },
+  name: { type: DataTypes.STRING, allowNull: false },
+  surname: DataTypes.STRING,
+  photo: DataTypes.STRING,
+  role: { type: DataTypes.ENUM('owner', 'admin', 'manager', 'employee', 'create_only', 'read_only', 'financial'), defaultValue: 'owner' },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'admins' });
 
 const AdminPassword = sequelize.define('AdminPassword', {
-  id:            { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:       { type: DataTypes.BOOLEAN, defaultValue: false },
-  password:      { type: DataTypes.STRING, allowNull: false },
-  salt:          { type: DataTypes.STRING, allowNull: false },
-  emailToken:    DataTypes.STRING,
-  resetToken:    DataTypes.STRING,
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  password: { type: DataTypes.STRING, allowNull: false },
+  salt: { type: DataTypes.STRING, allowNull: false },
+  emailToken: DataTypes.STRING,
+  resetToken: DataTypes.STRING,
   emailVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
-  authType:      { type: DataTypes.STRING, defaultValue: 'email' },
+  authType: { type: DataTypes.STRING, defaultValue: 'email' },
 }, { tableName: 'admin_passwords' });
 
 // Replaces loggedSessions: [String] array on AdminPassword
 const AdminSession = sequelize.define('AdminSession', {
-  id:         { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  token:      { type: DataTypes.TEXT, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  token: { type: DataTypes.TEXT, allowNull: false },
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'admin_sessions' });
 
 // Activity audit — one row per (admin, token) activity window. Used by the
 // /api/user-sessions page. Separate from AdminSession (which is a JWT whitelist).
 const UserSession = sequelize.define('UserSession', {
-  id:           { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  admin_id:    { type: DataTypes.INTEGER, allowNull: false },
-  startedAt:    { type: DataTypes.DATE, defaultValue: DataTypes.NOW, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  admin_id: { type: DataTypes.INTEGER, allowNull: false },
+  startedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, allowNull: false },
   lastActiveAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, allowNull: false },
-  endedAt:      { type: DataTypes.DATE, defaultValue: null },
-  tokenHash:    DataTypes.STRING(128),
-  ipAddress:    DataTypes.STRING,
-  userAgent:    DataTypes.TEXT,
+  endedAt: { type: DataTypes.DATE, defaultValue: null },
+  tokenHash: DataTypes.STRING(128),
+  ipAddress: DataTypes.STRING,
+  userAgent: DataTypes.TEXT,
   // 'web' for browser requests, 'app' for the mobile app. Set from the
   // X-Client request header; defaults to 'web' when absent.
-  client:       { type: DataTypes.ENUM('web', 'app'), allowNull: false, defaultValue: 'web' },
+  client: { type: DataTypes.ENUM('web', 'app'), allowNull: false, defaultValue: 'web' },
 }, {
   tableName: 'user_sessions',
   indexes: [
@@ -87,328 +87,330 @@ const UserSession = sequelize.define('UserSession', {
 });
 
 const Permission = sequelize.define('Permission', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  role:        { type: DataTypes.ENUM('admin','manager','employee','create_only','read_only','financial'), allowNull: false, unique: true },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  role: { type: DataTypes.ENUM('admin', 'manager', 'employee', 'create_only', 'read_only', 'financial'), allowNull: false, unique: true },
   permissions: { type: DataTypes.JSONB, defaultValue: {} },
 }, { tableName: 'permissions' });
 
 const Setting = sequelize.define('Setting', {
-  id:              { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:         { type: DataTypes.BOOLEAN, defaultValue: false },
-  enabled:         { type: DataTypes.BOOLEAN, defaultValue: true },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  enabled: { type: DataTypes.BOOLEAN, defaultValue: true },
   settingCategory: { type: DataTypes.STRING, allowNull: false },
-  settingKey:      { type: DataTypes.STRING, allowNull: false },
-  settingValue:    DataTypes.JSONB,
-  integerValue:    DataTypes.INTEGER,   // for $inc operations (e.g. last_invoice_number)
-  valueType:       { type: DataTypes.STRING, defaultValue: 'String' },
-  isPrivate:       { type: DataTypes.BOOLEAN, defaultValue: false },
-  isCoreSetting:   { type: DataTypes.BOOLEAN, defaultValue: false },
+  settingKey: { type: DataTypes.STRING, allowNull: false },
+  settingValue: DataTypes.JSONB,
+  integerValue: DataTypes.INTEGER,   // for $inc operations (e.g. last_invoice_number)
+  valueType: { type: DataTypes.STRING, defaultValue: 'String' },
+  isPrivate: { type: DataTypes.BOOLEAN, defaultValue: false },
+  isCoreSetting: { type: DataTypes.BOOLEAN, defaultValue: false },
 }, { tableName: 'settings' });
 
 const Upload = sequelize.define('Upload', {
-  id:        { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:   { type: DataTypes.BOOLEAN, defaultValue: false },
-  enabled:   { type: DataTypes.BOOLEAN, defaultValue: true },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  enabled: { type: DataTypes.BOOLEAN, defaultValue: true },
   modelName: DataTypes.STRING,
-  fieldId:   { type: DataTypes.STRING, allowNull: false },
-  fileName:  { type: DataTypes.STRING, allowNull: false },
-  fileType:  { type: DataTypes.ENUM(
-    'jpeg','jpg','png','gif','webp',
-    'doc','txt','csv','docx','xls','xlsx','pdf',
-    'zip','rar',
-    'mp4','mov','avi','mp3','m4a','webm'
-  ), allowNull: false },
-  isPublic:  { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
-  userID:    { type: DataTypes.INTEGER },
-  isSecure:  { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
-  path:      { type: DataTypes.STRING, allowNull: false },
-  created:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  fieldId: { type: DataTypes.STRING, allowNull: false },
+  fileName: { type: DataTypes.STRING, allowNull: false },
+  fileType: {
+    type: DataTypes.ENUM(
+      'jpeg', 'jpg', 'png', 'gif', 'webp',
+      'doc', 'txt', 'csv', 'docx', 'xls', 'xlsx', 'pdf',
+      'zip', 'rar',
+      'mp4', 'mov', 'avi', 'mp3', 'm4a', 'webm'
+    ), allowNull: false
+  },
+  isPublic: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  userID: { type: DataTypes.INTEGER },
+  isSecure: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  path: { type: DataTypes.STRING, allowNull: false },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'uploads' });
 
 const Client = sequelize.define('Client', {
-  id:       { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:  { type: DataTypes.BOOLEAN, defaultValue: false },
-  enabled:  { type: DataTypes.BOOLEAN, defaultValue: true },
-  name:     { type: DataTypes.STRING, allowNull: false },
-  phone:    DataTypes.STRING,
-  country:  DataTypes.STRING,
-  address:  DataTypes.STRING,
-  zipCode:  DataTypes.STRING,
-  email:    DataTypes.STRING,
-  website:  DataTypes.STRING,
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  enabled: { type: DataTypes.BOOLEAN, defaultValue: true },
+  name: { type: DataTypes.STRING, allowNull: false },
+  phone: DataTypes.STRING,
+  country: DataTypes.STRING,
+  address: DataTypes.STRING,
+  zipCode: DataTypes.STRING,
+  email: DataTypes.STRING,
+  website: DataTypes.STRING,
   currency: DataTypes.STRING,
   language: DataTypes.STRING,
-  notes:    DataTypes.TEXT,
-  created:  { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:  { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  notes: DataTypes.TEXT,
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'clients' });
 
 const Taxes = sequelize.define('Taxes', {
-  id:        { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:   { type: DataTypes.BOOLEAN, defaultValue: false },
-  enabled:   { type: DataTypes.BOOLEAN, defaultValue: true },
-  taxName:   DataTypes.STRING,
-  taxValue:  DataTypes.DECIMAL(5, 2),
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  enabled: { type: DataTypes.BOOLEAN, defaultValue: true },
+  taxName: DataTypes.STRING,
+  taxValue: DataTypes.DECIMAL(5, 2),
   isDefault: { type: DataTypes.BOOLEAN, defaultValue: false },
-  created:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'taxes' });
 
 const PaymentMode = sequelize.define('PaymentMode', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:     { type: DataTypes.BOOLEAN, defaultValue: false },
-  enabled:     { type: DataTypes.BOOLEAN, defaultValue: true },
-  name:        DataTypes.STRING,
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  enabled: { type: DataTypes.BOOLEAN, defaultValue: true },
+  name: DataTypes.STRING,
   description: DataTypes.TEXT,
-  isDefault:   { type: DataTypes.BOOLEAN, defaultValue: false },
-  created:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  isDefault: { type: DataTypes.BOOLEAN, defaultValue: false },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'payment_modes' });
 
 const Invoice = sequelize.define('Invoice', {
-  id:              { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:         { type: DataTypes.BOOLEAN, defaultValue: false },
-  number:          { type: DataTypes.INTEGER, allowNull: false },
-  year:            { type: DataTypes.INTEGER, allowNull: false },
-  content:         DataTypes.TEXT,
-  recurring:       { type: DataTypes.ENUM('daily','weekly','monthly','annually','quarter') },
-  date:            { type: DataTypes.DATEONLY, allowNull: false },
-  expiredDate:     { type: DataTypes.DATEONLY, allowNull: false },
-  converted_from:  { type: DataTypes.ENUM('quote','offer') },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  number: { type: DataTypes.INTEGER, allowNull: false },
+  year: { type: DataTypes.INTEGER, allowNull: false },
+  content: DataTypes.TEXT,
+  recurring: { type: DataTypes.ENUM('daily', 'weekly', 'monthly', 'annually', 'quarter') },
+  date: { type: DataTypes.DATEONLY, allowNull: false },
+  expiredDate: { type: DataTypes.DATEONLY, allowNull: false },
+  converted_from: { type: DataTypes.ENUM('quote', 'offer') },
   converted_quote_id: DataTypes.INTEGER,
   converted_offer_id: DataTypes.INTEGER,
-  taxRate:         { type: DataTypes.DECIMAL(5,2),  defaultValue: 0 },
-  subTotal:        { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  taxTotal:        { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  total:           { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  credit:          { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  discount:        { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  currency:        { type: DataTypes.STRING(3), defaultValue: 'NA' },
-  paymentStatus:   { type: DataTypes.ENUM('unpaid','paid','partially'), defaultValue: 'unpaid' },
-  isOverdue:       { type: DataTypes.BOOLEAN, defaultValue: false },
-  approved:        { type: DataTypes.BOOLEAN, defaultValue: false },
-  status:          { type: DataTypes.ENUM('draft','pending','sent','refunded','cancelled','on hold'), defaultValue: 'draft' },
-  notes:           DataTypes.TEXT,
-  pdf:             DataTypes.STRING,
-  created:         { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:         { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  taxRate: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
+  subTotal: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  taxTotal: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  total: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  credit: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  discount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  currency: { type: DataTypes.STRING(3), defaultValue: 'NA' },
+  paymentStatus: { type: DataTypes.ENUM('unpaid', 'paid', 'partially'), defaultValue: 'unpaid' },
+  isOverdue: { type: DataTypes.BOOLEAN, defaultValue: false },
+  approved: { type: DataTypes.BOOLEAN, defaultValue: false },
+  status: { type: DataTypes.ENUM('draft', 'pending', 'sent', 'refunded', 'cancelled', 'on hold'), defaultValue: 'draft' },
+  notes: DataTypes.TEXT,
+  pdf: DataTypes.STRING,
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'invoices', indexes: [{ unique: true, fields: ['number', 'year'] }] });
 
 const InvoiceItem = sequelize.define('InvoiceItem', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  itemName:    { type: DataTypes.STRING, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  itemName: { type: DataTypes.STRING, allowNull: false },
   description: DataTypes.TEXT,
-  quantity:    { type: DataTypes.INTEGER, defaultValue: 1 },
-  price:       { type: DataTypes.DECIMAL(12,2), allowNull: false },
-  total:       { type: DataTypes.DECIMAL(12,2), allowNull: false },
+  quantity: { type: DataTypes.INTEGER, defaultValue: 1 },
+  price: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
+  total: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
 }, { tableName: 'invoice_items' });
 
 const InvoiceFile = sequelize.define('InvoiceFile', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  fileId:      DataTypes.STRING,
-  name:        DataTypes.STRING,
-  path:        DataTypes.STRING,
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  fileId: DataTypes.STRING,
+  name: DataTypes.STRING,
+  path: DataTypes.STRING,
   description: DataTypes.TEXT,
-  isPublic:    { type: DataTypes.BOOLEAN, defaultValue: true },
+  isPublic: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, { tableName: 'invoice_files' });
 
 const Quote = sequelize.define('Quote', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:     { type: DataTypes.BOOLEAN, defaultValue: false },
-  number:      { type: DataTypes.INTEGER, allowNull: false },
-  year:        { type: DataTypes.INTEGER, allowNull: false },
-  content:     DataTypes.TEXT,
-  recurring:   { type: DataTypes.ENUM('daily','weekly','monthly','annually','quarter') },
-  date:        { type: DataTypes.DATEONLY, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  number: { type: DataTypes.INTEGER, allowNull: false },
+  year: { type: DataTypes.INTEGER, allowNull: false },
+  content: DataTypes.TEXT,
+  recurring: { type: DataTypes.ENUM('daily', 'weekly', 'monthly', 'annually', 'quarter') },
+  date: { type: DataTypes.DATEONLY, allowNull: false },
   expiredDate: { type: DataTypes.DATEONLY, allowNull: false },
-  converted:   { type: DataTypes.BOOLEAN, defaultValue: false },
-  taxRate:     { type: DataTypes.DECIMAL(5,2),  defaultValue: 0 },
-  subTotal:    { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  taxTotal:    { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  total:       { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  credit:      { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  discount:    { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  currency:    { type: DataTypes.STRING(3), defaultValue: 'NA' },
-  status:      { type: DataTypes.ENUM('draft','pending','sent','cancelled','on hold','declined','accepted'), defaultValue: 'draft' },
-  approved:    { type: DataTypes.BOOLEAN, defaultValue: false },
-  isExpired:   { type: DataTypes.BOOLEAN, defaultValue: false },
-  notes:       DataTypes.TEXT,
-  pdf:         DataTypes.STRING,
-  created:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  converted: { type: DataTypes.BOOLEAN, defaultValue: false },
+  taxRate: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
+  subTotal: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  taxTotal: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  total: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  credit: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  discount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  currency: { type: DataTypes.STRING(3), defaultValue: 'NA' },
+  status: { type: DataTypes.ENUM('draft', 'pending', 'sent', 'cancelled', 'on hold', 'declined', 'accepted'), defaultValue: 'draft' },
+  approved: { type: DataTypes.BOOLEAN, defaultValue: false },
+  isExpired: { type: DataTypes.BOOLEAN, defaultValue: false },
+  notes: DataTypes.TEXT,
+  pdf: DataTypes.STRING,
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'quotes', indexes: [{ unique: true, fields: ['number', 'year'] }] });
 
 const QuoteItem = sequelize.define('QuoteItem', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  itemName:    { type: DataTypes.STRING, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  itemName: { type: DataTypes.STRING, allowNull: false },
   description: DataTypes.TEXT,
-  quantity:    { type: DataTypes.INTEGER, defaultValue: 1 },
-  price:       { type: DataTypes.DECIMAL(12,2), allowNull: false },
-  total:       { type: DataTypes.DECIMAL(12,2), allowNull: false },
+  quantity: { type: DataTypes.INTEGER, defaultValue: 1 },
+  price: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
+  total: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
 }, { tableName: 'quote_items' });
 
 const QuoteFile = sequelize.define('QuoteFile', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  fileId:      DataTypes.STRING,
-  name:        DataTypes.STRING,
-  path:        DataTypes.STRING,
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  fileId: DataTypes.STRING,
+  name: DataTypes.STRING,
+  path: DataTypes.STRING,
   description: DataTypes.TEXT,
-  isPublic:    { type: DataTypes.BOOLEAN, defaultValue: true },
+  isPublic: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, { tableName: 'quote_files' });
 
 const Payment = sequelize.define('Payment', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:     { type: DataTypes.BOOLEAN, defaultValue: false },
-  number:      { type: DataTypes.INTEGER, allowNull: false },
-  date:        { type: DataTypes.DATEONLY, allowNull: false },
-  amount:      { type: DataTypes.DECIMAL(12,2), allowNull: false },
-  currency:    { type: DataTypes.STRING(3), defaultValue: 'NA' },
-  ref:         DataTypes.STRING,
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  number: { type: DataTypes.INTEGER, allowNull: false },
+  date: { type: DataTypes.DATEONLY, allowNull: false },
+  amount: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
+  currency: { type: DataTypes.STRING(3), defaultValue: 'NA' },
+  ref: DataTypes.STRING,
   description: DataTypes.TEXT,
-  created:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'payments' });
 
 const Warehouse = sequelize.define('Warehouse', {
-  id:               { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:          { type: DataTypes.BOOLEAN, defaultValue: false },
-  warehouse_id:     { type: DataTypes.STRING, allowNull: false, unique: true },
-  nick_name:        { type: DataTypes.STRING, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  warehouse_id: { type: DataTypes.STRING, allowNull: false, unique: true },
+  nick_name: { type: DataTypes.STRING, allowNull: false },
   additional_notes: DataTypes.STRING,
-  created:          { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:          { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'warehouses' });
 
 const Inventory = sequelize.define('Inventory', {
-  id:        { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:   { type: DataTypes.BOOLEAN, defaultValue: false },
-  sku:       { type: DataTypes.STRING, allowNull: false, unique: true },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  sku: { type: DataTypes.STRING, allowNull: false, unique: true },
   stock_all: { type: DataTypes.INTEGER, defaultValue: 0 },
-  created:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'inventories' });
 
 // Replaces Inventory.stock and on_the_way Map<warehouseId, Number>
 const InventoryWarehouseStock = sequelize.define('InventoryWarehouseStock', {
-  id:           { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   warehouse_id: { type: DataTypes.STRING, allowNull: false },
-  stock:        { type: DataTypes.INTEGER, defaultValue: 0 },
-  on_the_way:   { type: DataTypes.INTEGER, defaultValue: 0 },
+  stock: { type: DataTypes.INTEGER, defaultValue: 0 },
+  on_the_way: { type: DataTypes.INTEGER, defaultValue: 0 },
 }, { tableName: 'inventory_warehouse_stock' });
 
 const Sales = sequelize.define('Sales', {
-  id:                  { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:             { type: DataTypes.BOOLEAN, defaultValue: false },
-  name:                DataTypes.STRING,
-  status:              { type: DataTypes.ENUM('new','pending','won','lost','cancelled'), defaultValue: 'new' },
-  date:                DataTypes.DATE,
-  notes:               DataTypes.TEXT,
-  order_no:            DataTypes.STRING,
-  platform:            DataTypes.STRING,
-  product_name:        DataTypes.STRING,
-  sku:                 DataTypes.STRING,
-  quantity:            { type: DataTypes.INTEGER,      defaultValue: 0 },
-  sale_price_aud:      { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  shipping_price_aud:  { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  cost_aud:            { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  shipping_cost_aud:   { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  gross_profit:        { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  warehouse_location:  DataTypes.STRING,
-  shipping_no:         DataTypes.STRING,
-  logistics_company:   DataTypes.STRING,
-  carrier:             DataTypes.STRING,
-  transport_status:    DataTypes.STRING,
-  created:             { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:             { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  name: DataTypes.STRING,
+  status: { type: DataTypes.ENUM('new', 'pending', 'won', 'lost', 'cancelled'), defaultValue: 'new' },
+  date: DataTypes.DATE,
+  notes: DataTypes.TEXT,
+  order_no: DataTypes.STRING,
+  platform: DataTypes.STRING,
+  product_name: DataTypes.STRING,
+  sku: DataTypes.STRING,
+  quantity: { type: DataTypes.INTEGER, defaultValue: 0 },
+  sale_price_aud: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  shipping_price_aud: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  cost_aud: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  shipping_cost_aud: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  gross_profit: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  warehouse_location: DataTypes.STRING,
+  shipping_no: DataTypes.STRING,
+  logistics_company: DataTypes.STRING,
+  carrier: DataTypes.STRING,
+  transport_status: DataTypes.STRING,
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'sales' });
 
 const ProductCosts = sequelize.define('ProductCosts', {
-  id:        { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:   { type: DataTypes.BOOLEAN, defaultValue: false },
-  sku:       { type: DataTypes.STRING, allowNull: false },
-  cost:      { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  sku: { type: DataTypes.STRING, allowNull: false },
+  cost: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
   date_from: DataTypes.DATEONLY,
-  date_to:   DataTypes.DATEONLY,
-  created:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  date_to: DataTypes.DATEONLY,
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'product_costs' });
 
 const Case = sequelize.define('Case', {
-  id:                 { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:            { type: DataTypes.BOOLEAN, defaultValue: false },
-  status:             { type: DataTypes.ENUM('Open','Closed'), defaultValue: 'Open' },
-  order_no:           DataTypes.STRING,
-  platform:           DataTypes.STRING,
-  sku:                DataTypes.STRING,
-  product_name:       DataTypes.STRING,
-  quantity:           { type: DataTypes.INTEGER, defaultValue: 0 },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  status: { type: DataTypes.ENUM('Open', 'Closed'), defaultValue: 'Open' },
+  order_no: DataTypes.STRING,
+  platform: DataTypes.STRING,
+  sku: DataTypes.STRING,
+  product_name: DataTypes.STRING,
+  quantity: { type: DataTypes.INTEGER, defaultValue: 0 },
   warehouse_location: DataTypes.STRING,
-  description:        DataTypes.TEXT,
-  resolution:         DataTypes.STRING,
-  refund_amount:      { type: DataTypes.DECIMAL(12,2), defaultValue: 0 },
-  resend_quantity:    { type: DataTypes.INTEGER, defaultValue: 0 },
-  return_quantity:    { type: DataTypes.INTEGER, defaultValue: 0 },
-  created:            { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:            { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  description: DataTypes.TEXT,
+  resolution: DataTypes.STRING,
+  refund_amount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  resend_quantity: { type: DataTypes.INTEGER, defaultValue: 0 },
+  return_quantity: { type: DataTypes.INTEGER, defaultValue: 0 },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'cases' });
 
 const Product = sequelize.define('Product', {
-  id:                 { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:            { type: DataTypes.BOOLEAN, defaultValue: false },
-  product_name:       { type: DataTypes.STRING, allowNull: false },
-  image_link:         DataTypes.STRING,
-  manual_pdf_link:    DataTypes.STRING,
-  sku:                { type: DataTypes.STRING, allowNull: false },
-  description:        DataTypes.TEXT,
-  package_weight:     DataTypes.DECIMAL(10, 3),
-  package_length:     DataTypes.DECIMAL(10, 2),
-  package_width:      DataTypes.DECIMAL(10, 2),
-  package_height:     DataTypes.DECIMAL(10, 2),
-  container_40_qty:   DataTypes.INTEGER,
-  procurement_price:  DataTypes.DECIMAL(12, 2),
-  factory:            DataTypes.STRING,
-  factory_address:    DataTypes.STRING,
-  notes:              DataTypes.TEXT,
-  created:            { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:            { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  product_name: { type: DataTypes.STRING, allowNull: false },
+  image_link: DataTypes.STRING,
+  manual_pdf_link: DataTypes.STRING,
+  sku: { type: DataTypes.STRING, allowNull: false },
+  description: DataTypes.TEXT,
+  package_weight: DataTypes.DECIMAL(10, 3),
+  package_length: DataTypes.DECIMAL(10, 2),
+  package_width: DataTypes.DECIMAL(10, 2),
+  package_height: DataTypes.DECIMAL(10, 2),
+  container_40_qty: DataTypes.INTEGER,
+  procurement_price: DataTypes.DECIMAL(12, 2),
+  factory: DataTypes.STRING,
+  factory_address: DataTypes.STRING,
+  notes: DataTypes.TEXT,
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'products', indexes: [{ fields: ['sku'] }] });
 
 const ReleaseNote = sequelize.define('ReleaseNote', {
-  id:      { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   removed: { type: DataTypes.BOOLEAN, defaultValue: false },
   version: { type: DataTypes.STRING, allowNull: false },
-  date:    { type: DataTypes.DATEONLY, allowNull: false },
-  title:   { type: DataTypes.STRING, allowNull: false },
-  body:    DataTypes.TEXT,
+  date: { type: DataTypes.DATEONLY, allowNull: false },
+  title: { type: DataTypes.STRING, allowNull: false },
+  body: DataTypes.TEXT,
   created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'release_notes' });
 
 const Platform = sequelize.define('Platform', {
-  id:           { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:      { type: DataTypes.BOOLEAN, defaultValue: false },
-  enabled:      { type: DataTypes.BOOLEAN, defaultValue: true },
-  name:         { type: DataTypes.STRING, allowNull: false, unique: true },
-  fee_rate:     { type: DataTypes.DECIMAL(6, 4),  defaultValue: 1 },
-  fee_fixed:    { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
-  monthly_fee:  { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-  color:        DataTypes.STRING,
-  sort_order:   { type: DataTypes.INTEGER, defaultValue: 0 },
-  created:      { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:      { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  enabled: { type: DataTypes.BOOLEAN, defaultValue: true },
+  name: { type: DataTypes.STRING, allowNull: false, unique: true },
+  fee_rate: { type: DataTypes.DECIMAL(6, 4), defaultValue: 1 },
+  fee_fixed: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  monthly_fee: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  color: DataTypes.STRING,
+  sort_order: { type: DataTypes.INTEGER, defaultValue: 0 },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'platforms' });
 
 // Monthly ads spend. `platform_id = null` is the per-month "Total" (the single
 // editable number the Monthly P&L card writes to). Future: per-platform rows.
 const AdsSpend = sequelize.define('AdsSpend', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:     { type: DataTypes.BOOLEAN, defaultValue: false },
-  year:        { type: DataTypes.INTEGER, allowNull: false },
-  month:       { type: DataTypes.INTEGER, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  year: { type: DataTypes.INTEGER, allowNull: false },
+  month: { type: DataTypes.INTEGER, allowNull: false },
   platform_id: { type: DataTypes.INTEGER, allowNull: true },
-  amount:      { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
-  created:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:     { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  amount: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, {
   tableName: 'ads_spend',
   indexes: [{ unique: true, fields: ['year', 'month', 'platform_id'] }],
@@ -417,40 +419,40 @@ const AdsSpend = sequelize.define('AdsSpend', {
 // Historical snapshot of the computed monthly P&L. Upserted whenever
 // GET /monthly-pnl is called for a (year, month) so we retain a trail.
 const MonthlySalesSummary = sequelize.define('MonthlySalesSummary', {
-  id:             { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  year:           { type: DataTypes.INTEGER, allowNull: false },
-  month:          { type: DataTypes.INTEGER, allowNull: false },
-  revenue:        { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  cost_of_goods:  { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  shipping_cost:  { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  gross_profit:   { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  gross_margin:   { type: DataTypes.DECIMAL(6, 4),  defaultValue: 0 },
-  ads_cost:       { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  platform_fees:  { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  labor_cost:     { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  year: { type: DataTypes.INTEGER, allowNull: false },
+  month: { type: DataTypes.INTEGER, allowNull: false },
+  revenue: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  cost_of_goods: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  shipping_cost: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  gross_profit: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  gross_margin: { type: DataTypes.DECIMAL(6, 4), defaultValue: 0 },
+  ads_cost: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  platform_fees: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  labor_cost: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
   warehouse_cost: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  loss:           { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  tax:            { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  net_profit:     { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  net_margin:     { type: DataTypes.DECIMAL(6, 4),  defaultValue: 0 },
-  created:        { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:        { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  loss: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  tax: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  net_profit: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  net_margin: { type: DataTypes.DECIMAL(6, 4), defaultValue: 0 },
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, {
   tableName: 'monthly_sales_summary',
   indexes: [{ unique: true, fields: ['year', 'month'] }],
 });
 
 const FinancialReport = sequelize.define('FinancialReport', {
-  id:        { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:   { type: DataTypes.BOOLEAN, defaultValue: false },
-  company:   { type: DataTypes.STRING, allowNull: false },
-  date:      { type: DataTypes.DATEONLY, allowNull: false },
-  amount:    { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
-  currency:  { type: DataTypes.ENUM('AUD', 'CNY'), defaultValue: 'AUD' },
-  item:      DataTypes.STRING,
-  remarks:   DataTypes.TEXT,
-  created:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  updated:   { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  company: { type: DataTypes.STRING, allowNull: false },
+  date: { type: DataTypes.DATEONLY, allowNull: false },
+  amount: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  currency: { type: DataTypes.ENUM('AUD', 'CNY', 'USD'), defaultValue: 'AUD' },
+  item: DataTypes.STRING,
+  remarks: DataTypes.TEXT,
+  created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, {
   tableName: 'financial_reports',
   indexes: [
@@ -460,27 +462,27 @@ const FinancialReport = sequelize.define('FinancialReport', {
 });
 
 const FinancialReportFile = sequelize.define('FinancialReportFile', {
-  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  removed:     { type: DataTypes.BOOLEAN, defaultValue: false },
-  fileId:      DataTypes.STRING,
-  name:        DataTypes.STRING,
-  path:        DataTypes.STRING,
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  removed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  fileId: DataTypes.STRING,
+  name: DataTypes.STRING,
+  path: DataTypes.STRING,
   description: DataTypes.TEXT,
-  isPublic:    { type: DataTypes.BOOLEAN, defaultValue: true },
+  isPublic: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, { tableName: 'financial_report_files' });
 
 const KoganSkuWeight = sequelize.define('KoganSkuWeight', {
-  id:      { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   removed: { type: DataTypes.BOOLEAN, defaultValue: false },
-  sku:     { type: DataTypes.STRING, allowNull: false, unique: true },
-  weight:  DataTypes.DECIMAL(8,3),
+  sku: { type: DataTypes.STRING, allowNull: false, unique: true },
+  weight: DataTypes.DECIMAL(8, 3),
   created: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   updated: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { tableName: 'kogan_sku_weights' });
 
 // ─── Associations ─────────────────────────────────────────────────────────────
 
-Admin.hasOne(AdminPassword,  { foreignKey: 'admin_id', as: 'passwordRecord' });
+Admin.hasOne(AdminPassword, { foreignKey: 'admin_id', as: 'passwordRecord' });
 AdminPassword.belongsTo(Admin, { foreignKey: 'admin_id', as: 'user' });
 
 AdminPassword.hasMany(AdminSession, { foreignKey: 'admin_password_id', as: 'sessions' });
@@ -490,30 +492,30 @@ Admin.hasMany(UserSession, { foreignKey: 'admin_id', as: 'activitySessions' });
 UserSession.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
 
 Client.belongsTo(Admin, { foreignKey: 'createdBy_id', as: 'createdBy' });
-Client.belongsTo(Admin, { foreignKey: 'assigned_id',  as: 'assigned'  });
+Client.belongsTo(Admin, { foreignKey: 'assigned_id', as: 'assigned' });
 
-Invoice.belongsTo(Client, { foreignKey: 'client_id',    as: 'client'    });
-Invoice.belongsTo(Admin,  { foreignKey: 'createdBy_id', as: 'createdBy' });
+Invoice.belongsTo(Client, { foreignKey: 'client_id', as: 'client' });
+Invoice.belongsTo(Admin, { foreignKey: 'createdBy_id', as: 'createdBy' });
 Invoice.hasMany(InvoiceItem, { foreignKey: 'invoice_id', as: 'items' });
 Invoice.hasMany(InvoiceFile, { foreignKey: 'invoice_id', as: 'files' });
-Invoice.hasMany(Payment,     { foreignKey: 'invoice_id', as: 'payment'  });
+Invoice.hasMany(Payment, { foreignKey: 'invoice_id', as: 'payment' });
 
-Quote.belongsTo(Client, { foreignKey: 'client_id',    as: 'client'    });
-Quote.belongsTo(Admin,  { foreignKey: 'createdBy_id', as: 'createdBy' });
+Quote.belongsTo(Client, { foreignKey: 'client_id', as: 'client' });
+Quote.belongsTo(Admin, { foreignKey: 'createdBy_id', as: 'createdBy' });
 Quote.hasMany(QuoteItem, { foreignKey: 'quote_id', as: 'items' });
 Quote.hasMany(QuoteFile, { foreignKey: 'quote_id', as: 'files' });
 
-Payment.belongsTo(Invoice,     { foreignKey: 'invoice_id',     as: 'invoice'     });
-Payment.belongsTo(Client,      { foreignKey: 'client_id',      as: 'client'      });
-Payment.belongsTo(Admin,       { foreignKey: 'createdBy_id',   as: 'createdBy'   });
+Payment.belongsTo(Invoice, { foreignKey: 'invoice_id', as: 'invoice' });
+Payment.belongsTo(Client, { foreignKey: 'client_id', as: 'client' });
+Payment.belongsTo(Admin, { foreignKey: 'createdBy_id', as: 'createdBy' });
 Payment.belongsTo(PaymentMode, { foreignKey: 'paymentMode_id', as: 'paymentMode' });
 
-Sales.belongsTo(Client, { foreignKey: 'client_id',    as: 'client'    });
-Sales.belongsTo(Admin,  { foreignKey: 'createdBy_id', as: 'createdBy' });
+Sales.belongsTo(Client, { foreignKey: 'client_id', as: 'client' });
+Sales.belongsTo(Admin, { foreignKey: 'createdBy_id', as: 'createdBy' });
 
-Case.belongsTo(Client, { foreignKey: 'client_id',    as: 'client'    });
-Case.belongsTo(Sales,  { foreignKey: 'sales_id',     as: 'sales'     });
-Case.belongsTo(Admin,  { foreignKey: 'createdBy_id', as: 'createdBy' });
+Case.belongsTo(Client, { foreignKey: 'client_id', as: 'client' });
+Case.belongsTo(Sales, { foreignKey: 'sales_id', as: 'sales' });
+Case.belongsTo(Admin, { foreignKey: 'createdBy_id', as: 'createdBy' });
 
 Inventory.hasMany(InventoryWarehouseStock, { foreignKey: 'inventory_id', as: 'warehouseStock' });
 InventoryWarehouseStock.belongsTo(Inventory, { foreignKey: 'inventory_id' });
@@ -576,7 +578,7 @@ for (const name of Object.keys(models)) {
 // via the surrounding try/catch).
 async function ensureEnumValues() {
   const additions = [
-    { type: 'enum_admins_role',      value: 'financial' },
+    { type: 'enum_admins_role', value: 'financial' },
     { type: 'enum_permissions_role', value: 'financial' },
   ];
   for (const { type, value } of additions) {

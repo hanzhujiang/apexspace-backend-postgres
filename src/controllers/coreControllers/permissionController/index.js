@@ -33,6 +33,7 @@ const DEFAULT_PERMISSIONS = {
   dashboardTopSkus:             true,
   dashboardStaleSkus:           true,
   dashboardEmployeePerformance: true,
+  dashboardSkuGrossProfit:      true,
   // Shop Settings
   shopSettingsLoadDefaults:     false,
   shopSettingsDelete:           false,

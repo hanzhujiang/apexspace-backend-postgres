@@ -10,12 +10,12 @@ const { models, Op } = require('@/db');
  *
  * Formula owner-notes:
  *   revenue        = SUM(sale_price_aud + shipping_price_aud) for sales in month
- *   cost_of_goods  = SUM(cost_aud * quantity)
+ *   cost_of_goods  = SUM(cost_aud)                 — cost_aud is total cost for the row
  *   shipping_cost  = SUM(shipping_cost_aud)
  *   gross_profit   = SUM((sale + ship_price) * platform.fee_rate - platform.fee_fixed
- *                        - ship_cost - cost_aud * qty)
+ *                        - ship_cost - cost_aud)
  *   loss           = SUM over cases resolved in month of
- *                      refund_amount + (resend_qty + return_qty) * sales.cost_aud
+ *                      refund_amount + (resend_qty + return_qty) * sales.cost_aud / sales.quantity
  *   ads_cost       = ads_spend row for (year, month, platform_id IS NULL)
  *   platform_fees  = SUM(platforms.monthly_fee) for enabled, non-removed platforms
  *   tax            = max((revenue - cost_of_goods - shipping_cost) * 0.1, 0)
@@ -79,11 +79,10 @@ async function computePnl(year, month) {
     const sale = toNum(s.sale_price_aud);
     const shipPrice = toNum(s.shipping_price_aud);
     const shipCost = toNum(s.shipping_cost_aud);
-    const cost = toNum(s.cost_aud);
-    const qty = toNum(s.quantity);
+    const cost = toNum(s.cost_aud); // total cost for the row
 
     revenue += sale + shipPrice;
-    costOfGoods += cost * qty;
+    costOfGoods += cost;
     shippingCost += shipCost;
 
     // Mirrors calcGrossProfit() in apexspace-frontend-next/src/app/(erp)/sales/page.tsx
@@ -92,25 +91,32 @@ async function computePnl(year, month) {
       const rate = toNum(cfg.fee_rate);
       const fixed = toNum(cfg.fee_fixed);
       if (rate !== 0) {
-        grossProfit += (sale + shipPrice) * rate - fixed - shipCost - cost * qty;
+        grossProfit += (sale + shipPrice) * rate - fixed - shipCost - cost;
       }
     }
   }
 
-  // Loss: refunds + unit cost of resends/returns, using the linked sale's cost_aud.
+  // Loss: refunds + prorated cost of resends/returns using the linked sale's
+  // per-unit cost (cost_aud ÷ quantity).
   const saleIds = [...new Set(caseRows.map((c) => c.sales_id).filter(Boolean))];
   const linkedSales = saleIds.length
     ? await models.Sales.findAll({
         where: { id: { [Op.in]: saleIds } },
-        attributes: ['id', 'cost_aud'],
+        attributes: ['id', 'cost_aud', 'quantity'],
         raw: true,
       })
     : [];
-  const costBySaleId = new Map(linkedSales.map((s) => [s.id, toNum(s.cost_aud)]));
+  const unitCostBySaleId = new Map(
+    linkedSales.map((s) => {
+      const qty = toNum(s.quantity);
+      const totalCost = toNum(s.cost_aud);
+      return [s.id, qty > 0 ? totalCost / qty : 0];
+    })
+  );
 
   let loss = 0;
   for (const c of caseRows) {
-    const unitCost = costBySaleId.get(c.sales_id) || 0;
+    const unitCost = unitCostBySaleId.get(c.sales_id) || 0;
     loss +=
       toNum(c.refund_amount) +
       toNum(c.resend_quantity) * unitCost +

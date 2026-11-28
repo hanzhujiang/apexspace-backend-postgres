@@ -193,15 +193,18 @@ const koganUpload = async (req, res) => {
     const address = assembleAddress(row);
     const clientKey = `${row.DeliveryName}|${row.DeliveryPhone}|${address}`;
 
+    const kQty = parseInt(row.Quantity, 10) || 0;
+    const kUnitCost = costRecord?.cost != null ? Number(costRecord.cost) : 0;
     salesDocs.push({
       order_no: row.OrderID,
       platform: 'Kogan',
       product_name: row.ProductCode,
       sku,
-      quantity: parseInt(row.Quantity, 10) || 0,
+      quantity: kQty,
       sale_price_aud: parseFloat(row.ItemPrice) || 0,
       shipping_price_aud: shippingPrice,
-      cost_aud: costRecord?.cost ?? 0,
+      // cost_aud = total cost (per-unit × quantity)
+      cost_aud: kUnitCost * kQty,
       client_id: clientIdMap.get(clientKey),
       date: orderDate,
       status: 'new',

@@ -19,48 +19,65 @@ async function refreshPnlForSales(...dates) {
   }
 }
 
-// Overlay point-in-time cost_aud onto each sales row from ProductCosts (SKU + date window).
-// Does NOT mutate the sales table.
-async function enrichWithSkuCosts(sales) {
-  if (!sales.length) return sales;
-
-  const ProductCosts = models.ProductCosts;
-  const skus = [...new Set(sales.map((s) => s.sku).filter(Boolean))];
-  const toPlain = (s) => (typeof s.toJSON === 'function' ? s.toJSON() : { ...s });
-
-  if (!skus.length) return sales.map(toPlain);
-
-  const costEntries = await ProductCosts.findAll({
-    where: { sku: { [Op.in]: skus }, removed: false },
+// Look up the SKU's per-unit cost from ProductCosts for a given sale date.
+// Picks the most recent window whose date_from <= saleDate and (date_to is null
+// OR date_to >= saleDate). Returns null if nothing matches.
+async function lookupSkuCostAt(sku, saleDate, transaction) {
+  if (!sku) return null;
+  const entries = await models.ProductCosts.findAll({
+    where: { sku, removed: false },
     raw: true,
+    transaction,
   });
+  if (!entries.length) return null;
+  const d = saleDate ? new Date(saleDate) : new Date();
+  const match = entries
+    .filter(
+      (e) =>
+        new Date(e.date_from) <= d &&
+        (e.date_to == null || new Date(e.date_to) >= d)
+    )
+    .sort((a, b) => new Date(b.date_from) - new Date(a.date_from))[0];
+  return match ? Number(match.cost) : null;
+}
 
-  return sales.map((sale) => {
-    const plain = toPlain(sale);
-    if (!plain.sku || !plain.date) return plain;
+// sales.cost_aud is the authoritative total cost for the row — set on create
+// from (ProductCosts.cost × quantity) and edited directly thereafter. Read
+// endpoints return it as stored; no overlay.
 
-    const saleDate = new Date(plain.date);
-    const match = costEntries
-      .filter(
-        (e) =>
-          e.sku === plain.sku &&
-          new Date(e.date_from) <= saleDate &&
-          (e.date_to == null || new Date(e.date_to) >= saleDate)
-      )
-      .sort((a, b) => new Date(b.date_from) - new Date(a.date_from))[0];
+// Compute gross_profit for a sale row using the current platform fee config.
+// Formula mirrors monthlyPnlController:
+//   gp = (sale + ship_price) * fee_rate - fee_fixed - ship_cost - cost_aud
+// cost_aud is total cost for the row (no multiplication by quantity).
+// Returns 0 when the sale has no matching platform (so the row still has a
+// numeric value instead of leaving stale data).
+async function computeGrossProfit(saleFields, transaction) {
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const platformName = String(saleFields.platform || '').trim();
+  if (!platformName) return 0;
 
-    // Prefer ProductCosts overlay (point-in-time). Fall back to the sale's
-    // stored cost_aud (set at import time by koganUpload etc.) so rows without
-    // a matching ProductCosts window still show the imported cost instead of
-    // blanking out. 0 is treated as "unknown" and shown as blank.
-    if (match) {
-      plain.cost_aud = match.cost;
-    } else {
-      const stored = Number(plain.cost_aud);
-      plain.cost_aud = stored > 0 ? stored : null;
-    }
-    return plain;
+  const platform = await models.Platform.findOne({
+    where: sequelize.where(
+      sequelize.fn('LOWER', sequelize.col('name')),
+      platformName.toLowerCase()
+    ),
+    transaction,
   });
+  if (!platform) return 0;
+
+  const rate = num(platform.fee_rate);
+  if (rate === 0) return 0;
+
+  const sale = num(saleFields.sale_price_aud);
+  const shipPrice = num(saleFields.shipping_price_aud);
+  const shipCost = num(saleFields.shipping_cost_aud);
+  const cost = num(saleFields.cost_aud);
+  const fixed = num(platform.fee_fixed);
+
+  return (sale + shipPrice) * rate - fixed - shipCost - cost;
 }
 
 async function salesList(Model, req, res) {
@@ -119,7 +136,7 @@ async function salesList(Model, req, res) {
     distinct: true,
   });
 
-  const result = await enrichWithSkuCosts(rawResult);
+  const result = rawResult.map((r) => (typeof r.toJSON === 'function' ? r.toJSON() : r));
   const pages = Math.ceil(count / limit);
   const pagination = { page, pages, count };
 
@@ -192,9 +209,6 @@ function modelController() {
 
     const { sku, warehouse_location, quantity } = body;
 
-    // cost_aud: ProductCosts overlays this value at read time when a matching
-    // SKU+date window exists; otherwise the stored value is shown. We keep
-    // whatever the client sent (or 0 default) so manual sales can carry cost.
     // Strip Mongoose-style foreign key names if client sent them
     if (body.client && !body.client_id) {
       body.client_id = body.client;
@@ -218,6 +232,22 @@ function modelController() {
             }
           }
         }
+
+        // cost_aud stores TOTAL cost for the row. If the client didn't supply
+        // one, derive it from the current SKU cost (ProductCosts window) × qty.
+        // If the client did supply cost_aud, trust it — the edit form sends the
+        // total value directly.
+        const costProvided = body.cost_aud !== undefined && body.cost_aud !== null && body.cost_aud !== '';
+        if (!costProvided && sku && Number(quantity) > 0) {
+          const unitCost = await lookupSkuCostAt(sku, body.date, t);
+          if (unitCost != null) {
+            body.cost_aud = unitCost * Number(quantity);
+          }
+        }
+
+        // Persist gross_profit so dashboard aggregations don't have to join
+        // platform fees at read time.
+        body.gross_profit = await computeGrossProfit(body, t);
 
         const created = await Model.create(body, { transaction: t });
         await deductInventory(sku, warehouse_location, quantity, t);
@@ -250,11 +280,18 @@ function modelController() {
       raw: true,
     });
     await baseUpdate(req, res);
-    const after = await Model.findOne({
-      where: { id: req.params.id },
-      attributes: ['id', 'date'],
-      raw: true,
-    });
+
+    // Recompute gross_profit from the post-write row — any of cost_aud,
+    // sale_price_aud, shipping_price_aud, shipping_cost_aud, or platform may
+    // have changed, so the cheapest/most reliable path is to read back + save.
+    const after = await Model.findOne({ where: { id: req.params.id }, raw: true });
+    if (after) {
+      const gp = await computeGrossProfit(after);
+      if (Number(after.gross_profit) !== gp) {
+        await Model.update({ gross_profit: gp }, { where: { id: req.params.id } });
+      }
+    }
+
     await refreshPnlForSales(before?.date, after?.date);
   };
 
@@ -284,8 +321,7 @@ function modelController() {
     if (!sale) {
       return res.status(404).json({ success: false, result: null, message: 'No document found' });
     }
-    const [enriched] = await enrichWithSkuCosts([sale]);
-    return res.status(200).json({ success: true, result: enriched, message: 'we found this document' });
+    return res.status(200).json({ success: true, result: sale, message: 'we found this document' });
   };
 
   methods.recentChart = async (req, res) => {
@@ -381,6 +417,82 @@ function modelController() {
     });
 
     return res.status(200).json({ success: true, result });
+  };
+
+  methods.skuGrossProfit = async (req, res) => {
+    // Per-SKU gross profit over the last N days (N ∈ {7,15,30}). Returns the
+    // total gross profit, per-order average, and profit rate (GP ÷ SKU cost).
+    // `platform` is a case-insensitive filter against sales.platform; absent or
+    // 'all' means every platform. Caller may pass all=true to lift the top-20
+    // limit (used by a "Show all" modal).
+    const daysRaw = parseInt(req.query.days) || 7;
+    const days = [7, 15, 30].includes(daysRaw) ? daysRaw : 7;
+    const platform = (req.query.platform || '').trim();
+    const showAll = req.query.all === 'true' || req.query.all === '1';
+    const limitClause = showAll ? '' : 'LIMIT 20';
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const whereParts = [
+      'removed = false',
+      'sku IS NOT NULL',
+      "sku <> ''",
+      'date >= :from',
+    ];
+    const replacements = { from };
+    if (platform && platform.toLowerCase() !== 'all') {
+      whereParts.push('LOWER(platform) = LOWER(:platform)');
+      replacements.platform = platform;
+    }
+
+    // Per-unit average: sum(gross_profit) ÷ sum(quantity).
+    // Per-unit average rate: avg GP ÷ avg per-unit cost = sum(gp) ÷ sum(cost_aud).
+    // cost_aud is stored as total cost for the row.
+    const sql = `
+      SELECT sku,
+             MIN(product_name) AS product_name,
+             COUNT(*)::int AS "orderCount",
+             SUM(quantity)::int AS "totalQty",
+             SUM(gross_profit)::float AS "totalGrossProfit",
+             SUM(cost_aud)::float AS "totalCost"
+      FROM sales
+      WHERE ${whereParts.join(' AND ')}
+      GROUP BY sku
+      ORDER BY (SUM(gross_profit) / NULLIF(SUM(quantity), 0)) DESC NULLS LAST
+      ${limitClause}
+    `;
+
+    const rows = await sequelize.query(sql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const result = rows.map((r) => {
+      const totalGp = Number(r.totalGrossProfit) || 0;
+      const totalCost = Number(r.totalCost) || 0;
+      const totalQty = Number(r.totalQty) || 0;
+      const avgGrossProfit = totalQty > 0 ? totalGp / totalQty : 0;
+      const avgUnitCost = totalQty > 0 ? totalCost / totalQty : 0;
+      return {
+        sku: r.sku,
+        product_name: r.product_name,
+        orderCount: Number(r.orderCount) || 0,
+        totalQty,
+        avgGrossProfit,
+        totalGrossProfit: totalGp,
+        totalCost,
+        avgUnitCost,
+        // avgGrossProfit / avgUnitCost ≡ SUM(gp) / SUM(cost_aud)
+        grossProfitRate: avgUnitCost > 0 ? avgGrossProfit / avgUnitCost : 0,
+      };
+    });
+
+    const platformRows = await models.Platform.findAll({
+      where: { removed: false, enabled: true },
+      order: [['sort_order', 'ASC'], ['id', 'ASC']],
+      attributes: ['name'],
+    });
+    const platforms = platformRows.map((p) => p.name);
+    return res.status(200).json({ success: true, result: { rows: result, platforms, days } });
   };
 
   methods.staleSkus = async (req, res) => {

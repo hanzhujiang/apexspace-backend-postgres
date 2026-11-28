@@ -35,6 +35,7 @@ routesList.forEach(({ entity, controllerName }) => {
 const salesCtrl = appControllers['salesController'];
 router.route('/sales/recent-chart').get(catchErrors(salesCtrl['recentChart']));
 router.route('/sales/top-skus').get(catchErrors(salesCtrl['topSkus']));
+router.route('/sales/sku-gross-profit').get(catchErrors(salesCtrl['skuGrossProfit']));
 router.route('/sales/stale-skus').get(catchErrors(salesCtrl['staleSkus']));
 router.route('/sales/employee-performance').get(catchErrors(salesCtrl['employeePerformance']));
 
@@ -50,6 +51,11 @@ router.route('/inventory/arrived/:id').patch(catchErrors(inventoryCtrl['arrived'
 router.route('/inventory/update-ontheway/:id').patch(catchErrors(inventoryCtrl['updateOnTheWay']));
 
 router.post('/chat', catchErrors(chatController.chat));
+
+// Owner-only migration runner — see migrationsController for safety checks.
+const migrationsCtrl = appControllers['migrationsController'];
+router.route('/admin/migrations').get(catchErrors(migrationsCtrl.list));
+router.route('/admin/migrations/run').post(catchErrors(migrationsCtrl.run));
 
 // Monthly P&L — custom aggregation endpoint + ads spend upsert.
 const monthlyPnlCtrl = appControllers['monthlyPnlController'];
